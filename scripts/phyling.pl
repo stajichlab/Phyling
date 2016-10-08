@@ -1,17 +1,20 @@
 #!env perl
 use strict;
 use warnings;
+
 use FindBin qw($Bin);
+use lib "$FindBin::Bin/../lib/perl";
 use File::Copy qw(move);
 use Env qw(PHYLINGHOME);
 use File::Spec;
 use Getopt::Long;
 use File::Temp qw(tempfile);
-
+use PHYling qw(debug);
 use IO::String;
 use Bio::SeqIO;
 use Bio::AlignIO;
-my $SLEEP_TIME = 240; # sleep 240sec which should give the blatserver enough time to start up
+
+my $SLEEP_TIME = 240; # sleep 180 sec which should give the blatserver enough time to start up
 
 my $buffer_end_start = 3; # what is the sloppy overhang allowed when bringing in more seqs
 
@@ -23,24 +26,25 @@ my %uncompress = ('bz2' => 'bzcat',
 my @EXPECTED_APPS = qw(FASTQ_TO_FASTA HMMALIGN HMMSEARCH TRANSEQ 
                        FASTA TFASTY HMMEMIT CAP3
                        CDBFASTA CDBYANK PHRAP SREFORMAT 
-                       TRIMAL FASTTREE MUSCLE EXONERATE);
+                       TRIMAL FASTTREE MUSCLE EXONERATE DIAMOND);
 
 $ENV{WISECONFIGDIR} = '/opt/linux/centos/7.x/x86_64/pkgs/genewise/2.4.1/';
 my $app_conf;
+
 if( $PHYLINGHOME) {
-    $app_conf = File::Spec->catfile($PHYLINGHOME, "lib","apps.conf");
+    $app_conf = File::Spec->catfile($PHYLINGHOME, qw(lib apps.conf));
+
 } elsif ($Bin) {
-    $app_conf = File::Spec->catfile($Bin, "..","lib","apps.conf");
+    $app_conf = File::Spec->catfile($Bin, qw(.. lib apps.conf));
 }
 
-my $debug = 0;
+my $fix_names = 0;
 my $qual_offset = 33;
 my $hmmer_cutoff = '1e-10';
 my $contig_match_cutoff = '1e-8';
 my $contig_transsearch_cutoff = '1e-3';
 my $Max_rounds = 10; # max iterations
 my $scaffold_separator = 'N'x15; # 5 amino acid break in the scaffolded contigs, codon
-my $njtree_options = "-boot 1000 -wag -seed 121 -bionj";
 my ($hmm2_models,$hmm3_models,$marker_hmm,$marker_fasta_dir);
 my $clade = 'AFTOL70';
 my $CPUs = 1;
@@ -51,10 +55,14 @@ my $prefix;
 my $seqprefix;
 my $rDNA_hmm;
 my $do_MSA = 0;
+my $consensus_db = 'JGI_1086.consensus';
+my $diamond_db;
+my $interleaved = 1;
 my $consensus_folder = 'consensus';
-my $port = 8001+int rand(100);
+my $port = 8001+int rand(10000);
+my $outdir = 'phyling_run';
 GetOptions('ac|app|appconf:s' => \$app_conf,
-	   'v|debug!'         => \$debug,
+	   'v|debug!'         => \$PHYling::DEBUG,
 	   'force!'           => \$force,
 	   'maxrounds:i'      => \$Max_rounds,
 	   'q|qual:i'         => \$qual_offset,
@@ -62,7 +70,7 @@ GetOptions('ac|app|appconf:s' => \$app_conf,
 	   'cleanup!'         => \$cleanup,
 	   'p|prefix:s'       => \$prefix,
 	   'sp|prefix:s'      => \$seqprefix,	   
-
+	   'interleaved!'     => \$interleaved,
 	   'c|clade:s'        => \$clade,
 	   'cpus|cpu:i'           => \$CPUs,
 	   'hmm:s'            => \$marker_hmm,
@@ -71,49 +79,21 @@ GetOptions('ac|app|appconf:s' => \$app_conf,
 	   'md|markerdir:s'   => \$marker_fasta_dir,
 	   'rDNA!'            => \$rDNA_hmm,
 	   'cons|consensus:s' => \$consensus_folder,
-	   
+	   'consdb:s'         => \$consensus_db,
+	   'dmdb:s'           => \$diamond_db,
 	   'msa!'             => \$do_MSA,
-	   'port:s'           => \$port,
-	   
+	   'port:i'           => \$port,
+	   'o|out:s'          => \$outdir,
     );
 
 mkdir($consensus_folder) unless -d $consensus_folder;
-
-$hmm3_models ||= File::Spec->catdir($Bin,'..','DB','markers',$clade,"HMM3");
-
-if( ! -d $hmm3_models ) {
-    die("$hmm3_models is not a valid directory with HMM3 models\n");
-}
-
-$marker_hmm ||= File::Spec->catdir($Bin,'..','DB','markers',$clade,"markers_3.hmmb");
-
-if( ! -f $marker_hmm ) {
-    die("need a valid marker protein HMM for the markers to extract from the reads\n");
-}
-
-$hmm2_models ||= File::Spec->catdir($Bin,'..','DB','markers',$clade,
-				     'HMM2');
-if( ! -d $hmm2_models ) {
-    die("$hmm2_models is not a valid directory with HMM2 models\n");
-}
-$rDNA_hmm ||= File::Spec->catfile($Bin,'..','DB','markers',$clade,
-				    'rDNA_3.hmmb');
-if( ! -f $rDNA_hmm ) {
-    $rDNA_hmm = undef;
-}
-
-$marker_fasta_dir ||= File::Spec->catdir($Bin,'..','DB','markers',$clade,
-				    'marker_files');
-#if( ! -d $marker_fasta_dir ) {
-#    die("$marker_fasta_dir is not a valid directory with fasta sequences per model\n");
-#}
 
 my $error = 0;
 debug("app conf is $app_conf\n");
 if( ! $app_conf ) {
     die("Must provide app config file via $PHYLINGHOME or --app --appconf\n");
 }
-my $paths = &parse_config($app_conf);
+my $paths = &PHYling::parse_config($app_conf);
 for my $p ( @EXPECTED_APPS ) {
     if( ! exists $paths->{$p} || ! -x $paths->{$p} ) {
 	debug("cannot find Application $p ",$paths->{$p},"\n");
@@ -122,8 +102,20 @@ for my $p ( @EXPECTED_APPS ) {
 }
 die("Error in App config file\n") if $error;
 
+$diamond_db = $consensus_db.".dmnd" unless defined $diamond_db;
+if( ! -f $diamond_db ) {
+    my $cmd = sprintf("%s blastx --threads %d --in %s --db %s",
+		      $paths->{'DIAMOND'},$CPUs, $consensus_db, $diamond_db);
+    debug("CMD: $cmd\n");
+    `$cmd`;
+}
+
 my $in_file = shift @ARGV;
 
+if( ! defined $in_file || ! -f $in_file ) {
+    die("must provide an input sequencing file to process");
+}
+	
 my (undef,$dir,$fname) = File::Spec->splitpath($in_file);
 
 my $base = $prefix;
@@ -133,23 +125,24 @@ if( ! $prefix && $fname =~ /(\S+)\.(fq|fq|fa|fast\w+|seq)/) {
     $base = $$;
 }
 if( ! $tmpdir ) {
-    $tmpdir = $base.".PHYling";
+    $tmpdir = File::Spec->catdir($outdir,$base.".PHYling");
 } 
 if(  ! -d $tmpdir ) {
     mkdir($tmpdir);
 }
 
-
 my $fasta_file;
 
-my $data_type;
-if( $fname =~ /(\S+)\.(fastq|fq)/ ) {
+my ($data_type,$ext);
+if( $fname =~ /(\S+)\.(fastq|fq)(\.(gz|bz2))?/ ) {
     $prefix = $1 if ! defined $prefix;
+    $ext = $4;
     $fasta_file = File::Spec->catfile($tmpdir,"$1.fasta");
     if( ! -f $fasta_file || $force ) {
 	my $cmd;
 	if( $fname =~ /\.(bz2|gz)$/ ) {
-	    $cmd = sprintf("%s %s | %s -Q %d -o %s",$uncompress{$1},$in_file,
+	    $cmd = sprintf("%s %s | %s -Q %d -o %s",$PHYling::DECOMPRESS{$1},
+			   $in_file,
 			   $paths->{'FASTQ_TO_FASTA'},$qual_offset,$fasta_file);
 	} else {
 	    $cmd = sprintf("%s -Q %d -i %s -o %s",$paths->{'FASTQ_TO_FASTA'},
@@ -159,8 +152,9 @@ if( $fname =~ /(\S+)\.(fastq|fq)/ ) {
 	`$cmd`;
     }
     $data_type = 'FASTQ';
-} elsif( $fname =~ /(\S+)\.(seq|fasta|fa|fas)/ ) {
+} elsif( $fname =~ /(\S+)\.(seq|fasta|fa|fas)(\.(gz|bz2))?/ ) {
     $prefix = $1 if ! defined $prefix;
+    $ext = $4;
     $fasta_file = $in_file;
     $data_type = 'FASTA';
 } else {
@@ -171,9 +165,10 @@ $seqprefix ||= $prefix;
 
 # GET RID OF PROBLEMATIC CHARACTERS IN THE READ IDs
 # some caching, if we already 
+
 my $tmp_rename = File::Spec->catfile($tmpdir,$prefix.".fasta.fix");
 if( $force || ! -f $tmp_rename ) {
-    &fix_read_ids($fasta_file,$tmp_rename);
+    &PHYling::fix_read_ids($fasta_file,$tmp_rename,$interleaved);
 } else {
     debug("Read file already renamed\n");
 }
@@ -183,30 +178,21 @@ $fasta_file = $tmp_rename;
 &index_file($fasta_file);
 
 # make 
-my $bitfile = &make_2bit_file($fasta_file);
+warn("using port $port\n");
+my $bitfile = &make_2bit_file($fasta_file,$force);
 my $blat_ready = &start_gfServer($port,$bitfile);
 
-# MAKE 6 FRAME TRANSLATION PROTEIN FILE
-my $aafile = File::Spec->catfile($tmpdir,$prefix.".6frame.faa");
-if( -x $paths->{TRANSEQ} ) {
-    &make_6frame_transeq($fasta_file,$aafile);
-} else {
-    &make_6frame($fasta_file,$aafile);
-}
-
-# RUN PROTEIN HMMSEARCH OF MARKERS AGAINST TRANSLATION
-my $match_pref = File::Spec->catfile($tmpdir,$prefix);
-
-my ($marker_table,$marker_report) = &hmmsearch_markers($aafile,
-						       $marker_hmm,
-						       $match_pref);
-
-my $reads_per_marker = &parse_hmmtable($marker_table);
+my $marker_table = sprintf("%s.diamond.tab",
+			   File::Spec->catfile($tmpdir,$seqprefix));
+&run_diamond_markers($fasta_file, $consensus_db, $marker_table);
+my $reads_per_marker = &PHYling::parse_diamond_blastx($marker_table);
 
 my @trim_files;
 for my $marker ( keys %$reads_per_marker ) {
-    my $marker_cons = File::Spec->catfile($consensus_folder,"$marker.cons");    
+    warn("marker is $marker\n");
+    my $marker_cons = File::Spec->catfile($consensus_folder,"$marker.cons");
     if( ! -f $marker_cons ) {
+	die "cannot process without consesnsi already created for now";
 	&make_consensus_HMM(File::Spec->catfile($hmm3_models,$marker.".hmm"),
 			    $marker_cons);
     } else {
@@ -222,9 +208,11 @@ for my $marker ( keys %$reads_per_marker ) {
 	debug("cdnafile exists\n");
     }
     next if ( ! $force && -f $cdnafile);
+    
     if( ! -f $scaffoldfile || $force ) {
 	my @reads = keys %{$reads_per_marker->{$marker}};
-	my $reads_file = File::Spec->catfile($tmpdir,$prefix.".$marker.r1.fasta");
+	my $reads_file = File::Spec->catfile($tmpdir,
+					     $prefix.".$marker.r1.fasta");
 	if( $force || ! -f $reads_file || 
 	    -M $reads_file > -M $marker_table) {
 	    &retrieve_reads($fasta_file,\@reads,$reads_file);
@@ -232,7 +220,8 @@ for my $marker ( keys %$reads_per_marker ) {
 	
 #	my $contigsfile = &assemble_reads_phrap($reads_file);
 	my $contigsfile = &assemble_reads_cap3($reads_file);
-	my $contig_count = &seqcount($contigsfile);
+	my $contig_count = &PHYling::seqcount($contigsfile);
+
 	if( $contig_count == 0 ) {
 	    warn("No assembled contigs or singlets available\n");
 	    next;
@@ -242,13 +231,15 @@ for my $marker ( keys %$reads_per_marker ) {
 	my $rounds = 0;
 	while( $contig_count > 1 && 
 	       $change > 0 && $rounds < $Max_rounds) {
-	    my $added = &search_and_add($fasta_file,$contigsfile,$reads_file);
+
+	    my $added = &search_and_add($fasta_file,$contigsfile,
+					$reads_file);
 	    warn("added $added reads to $reads_file\n");
 	    last if $added == 0;
 	    
 	    #$contigsfile = &assemble_reads_phrap($reads_file);
 	    $contigsfile = &assemble_reads_cap3($reads_file);
-	    my $newcount = &seqcount($contigsfile);
+	    my $newcount = &PHYling::seqcount($contigsfile);
 	    warn("contig count was $contig_count newcount is $newcount\n");
 	    $change = ($contig_count - $newcount);
 	    $contig_count = $newcount;
@@ -261,18 +252,19 @@ for my $marker ( keys %$reads_per_marker ) {
 	my $scaff_seq = join($scaffold_separator, (map { defined $_  ? $_->seq : '' } @$updated_contigs));
 	my $scaffold = Bio::Seq->new(-id => "$prefix.$marker.scaffold",
 				     -seq => $scaff_seq);
-	Bio::SeqIO->new(-format => 'fasta', -file =>">$scaffoldfile")->write_seq($scaffold);
+	Bio::SeqIO->new(-format => 'fasta', 
+			-file =>">$scaffoldfile")->write_seq($scaffold);
 	
 	debug("Scaffold file: $scaffoldfile\n");
     }
     
     if( -f $scaffoldfile ) {
 	&exonerate_best_model($marker_cons,$scaffoldfile,$cdnafile);
-	&translate_cdna($cdnafile,$pepfile);
+	&PHYling::translate_cdna($cdnafile,$pepfile,$force);
     } else {
 	warn("no scaffold to process for $marker\n");
     }
-    last if $debug;
+    last if $PHYling::DEBUG;
 }
 
 if( $rDNA_hmm ) {
@@ -297,8 +289,9 @@ sub start_gfServer {
 			  $paths->{GFSERVER},$Port,$bitfile,$bitfile);
 	debug("CMD: $cmd\n");
 	system("$cmd &");
-	warn("done executing\n");
    # }
+    # force sleeping so gf server has enough time to startup
+    sleep($SLEEP_TIME);
     return 1;
 }
 sub stop_gfServer {
@@ -401,6 +394,7 @@ sub exonerate_best_model {
     }
     $rc;
 }
+
 sub assemble_reads_phrap {
     my $infile = shift;
     my $contigs = $infile.".contigs";
@@ -479,45 +473,20 @@ sub get_read {
     @seqs;
 }
 
-sub read_marker_refproteins {
-    my ($dir,$marker_name) = @_;
-    my $marker_file = File::Spec->catfile($dir,$marker_name);
-    for my $ext ( qw(fa fas fasta pep aa seq) ) {
-	if( -f $marker_file .".$ext" ) {
-	    $marker_file .= ".$ext";
-	    last;
-	}
+
+sub run_diamond_markers {
+    my ($seqfile, $seqdb, $output) = @_;
+    if( $force || 
+	! -f $output ||
+	-M $output > -M $seqdb ) {
+	my $cmd = sprintf("%s blastx -d %s -q %s -o %s", $paths->{'DIAMOND'}, $seqdb, $seqfile, $output);
+	warn("CMD: $cmd\n");
+	my $rc = `$cmd`;
     }
-    my $seqio = Bio::SeqIO->new(-format => 'fasta',
-				-file   => $marker_file);
-    my $seqs = [];
-    while( my $seq =$seqio->next_seq ) {
-	push @{$seqs}, $seq;
-    }
-    $seqs;
+    $output;
 }
 
-sub parse_hmmtable {
-    my ($infile) = @_;
-    open(my $fh => $infile) || die "cannot open $infile: $!";
-    my $seen;
-    while(<$fh>) {
-	next if /^\#/;
-	my @row = split(/\s+/,$_);
-	my $t = $row[0];
-	my $q = $row[3];
-	# this may be unnecessary
-	my $evalue = $row[6];
-	next if $evalue > $hmmer_cutoff;
-	my $id = $t;
-	$id =~ s/_[0-6]$//;
-	$seen->{$q}->{$id}++;
-    }
-    $seen;
-}
-
-
-sub hmmsearch_markers {
+sub run_hmmsearch_markers {
     my ($seqdb, $markerdb,$hmmfilepref) = @_;
     my $table = $hmmfilepref.".hmmsearch.domtbl";
     my $rpt = $hmmfilepref.".hmmsearch.out";
@@ -537,58 +506,8 @@ sub hmmsearch_markers {
     ($table,$rpt);
 }
 
-sub translate_cdna {
-    my ($infile,$outfile) = @_;
-    my $rc = 1;
-    if( $force ||
-	! -f $outfile ||
-	-M $outfile > -M $infile ) {
 
-	my $in = Bio::SeqIO->new(-format => 'fasta', -file => $infile);
-	my $out = Bio::SeqIO->new(-format => 'fasta', -file => ">$outfile");
-	while( my $s = $in->next_seq ) {
-	    my $rseq = $s->revcom;
-	    my $id = $s->display_id;
-	    my $tseq = $s->translate(-frame=> 0,
-				     -terminator => 'X');
-	    $out->write_seq($tseq);
-	}
 
-    }
-    $rc;
-}
-
-sub make_6frame {
-    my ($infile,$outfile) = @_;
-    my $rc = 1;
-    if( $force ||
-	! -f $outfile ||
-	-M $outfile > -M $infile ) {
-
-	my $in = Bio::SeqIO->new(-format => 'fasta', -file => $infile);
-	my $out = Bio::SeqIO->new(-format => 'fasta', -file => ">$outfile");
-	while( my $s = $in->next_seq ) {
-	    my $rseq = $s->revcom;
-	    my $id = $s->display_id;
-	    for my $frame ( 0,1,2) {
-		my $tseq = $s->translate(-frame=> $frame,
-					 -terminator => 'X');
-		$tseq->display_id(sprintf("%s_%d",
-					  $id,$frame+1));
-		$out->write_seq($tseq);
-		$tseq = $rseq->translate(-frame=> $frame,
-					 -terminator => 'X');
-		$tseq->display_id(sprintf("%s_%d",
-					  $id,$frame+4));
-		$out->write_seq($tseq);	    
-	    }
-	    $rc++;
-	}
-    } else {
-	debug("6frame translation already created");
-    }
-    $rc;
-}
 
 sub make_6frame_transeq {
     my ($infile,$outfile) = @_;
@@ -621,64 +540,7 @@ sub index_file {
     $rc;
 }
 
-sub fix_read_ids {
-    my ($infile,$outfile) = @_;
-    my $rc = 1;
-    open(my $fh => $infile) || die "Cannot open $infile: $!\n";
-    open(my $ofh => ">$outfile") || die("Cannot open $outfile: $!\n");
-    while(<$fh>) {
-	if( /^>(\S+)/ ) {
-	    my $id = $1;
-	    $id =~ s/[-:\/#|]/_/g;
-	    $_ = ">$id\n";
-	    $rc++;
-	} 
-	print $ofh $_;
-    }    
-    close($fh);
-    close($ofh);
-    $rc;
-}
 
-sub parse_config {
-    my $config = shift;
-    my $apps = {};
-    open(my $fh => $config) || die "cannot open $config: $!";
-    while(<$fh>) {
-	chomp;
-	if(/([^=]+)=(\S+)/ ) {	
-	    $apps->{$1} = $2;
-	} else {
-	    warn("cannot parse line $_\n");
-	}
-    }
-    if( $debug ) {
-	while( my ($app,$path) = each %$apps ) {
-	    debug("app is $app with path = $path\n");
-	}
-    }
-    $apps;
-}
-
-sub seqcount {
-    my $file = shift;
-    open(my $fh => "grep -c '^>' $file |") || die $!;
-    my $n = <$fh>;
-    $n =~ s/\s+//g;
-    $n;
-}
-
-
-sub seq_lengths {
-    my $file = shift;
-    my $in = Bio::SeqIO->new(-format => 'fasta', -file => $file);
-    my $res = {};
-    while( my $s = $in->next_seq ) {
-	debug($s->display_id. " ". $s->length,"\n");
-	$res->{$s->display_id} = $s->length;
-    }
-    $res;
-}
 
 =head2 stitch_order_contigs
 
@@ -739,9 +601,11 @@ sub stitch_order_contigs {
 
 sub search_and_add {
     my ($searchdb,$queryfile,$outputreads) = @_;
-    
-    my $qlens = &seq_lengths($queryfile);
-    my $rlens = &seq_lengths($outputreads);
+
+    warn("$queryfile\n");
+    my $qlens = &PHYling::seq_lengths($queryfile);
+    my $rlens = &PHYling::seq_lengths($outputreads);
+
     my (undef,$searchdir,$fname) = File::Spec->splitpath($searchdb);
     $searchdir = '.';
 # replace this with BLAT and near-identity?
@@ -749,19 +613,20 @@ sub search_and_add {
 #		      $paths->{FASTA},$CPUs,$contig_match_cutoff,
 #		      $queryfile, $searchdb);
     my $cmd = sprintf("%s %s %s %s %s stdout -out=blast8 |",
-		      $paths->{GFCLIENT},'localhost',$port,$searchdir,$queryfile);
+		      $paths->{GFCLIENT},'localhost',$port,$searchdir,
+		      $queryfile);
     
     debug("CMD: $cmd\n");
     open(my $fasta_res => $cmd) || die "cannot run $cmd\n";
     my @results;
-    my @readnames;
+    my %readnames;
     while(<$fasta_res>) {
 	next if /^\#/;
 	debug($_);
 	chomp;
 	my ($q,$h,$pid,$match,$mismatch,$gap,$qstart,$qend,
 	    $tstart,$tend,$evalue) = split(/\t/,$_);
-	next if( exists $rlens->{$h});
+	next if( exists $rlens->{$h} );
 	my ($qstrand,$tstrand) = (1,1);
 	if( $qstart > $qend ) { 
 	    ($qend,$qstart) = ($qstart,$qend);
@@ -771,9 +636,10 @@ sub search_and_add {
 	    ($tend,$tstart) = ($tstart,$tend);
 	    $tstrand = -1;
 	}
+
 	if($tstart > $buffer_end_start ) { # if target alignment start is not 1 or some 
 	                                   # number close to 1 (buffer_end_start)
-	    push @readnames, $h;
+	    $readnames{$h}++;
 	} elsif( abs($qlens->{$q}-$qend) >= $buffer_end_start ) {
 	    # -----|        Query
 	    # ------------| Hit
@@ -781,13 +647,13 @@ sub search_and_add {
 	    my ($read_seq) = &get_read($searchdb,$h);
 	    my $read_len = $read_seq->length;
 	    if( $read_len > $tend) { # if the end of read align (tend) after the end of this aln
-		push @readnames, $h;
+		$readnames{$h}++;
 	    }
 	}
     }
-    debug("readnames are @readnames\n");
-    if( @readnames ) {
-	&retrieve_reads($searchdb,\@readnames,"$outputreads.add");
+    debug("readnames are ",sort keys %readnames, "\n");
+    if( keys %readnames ) {
+	&retrieve_reads($searchdb,[sort keys %readnames],"$outputreads.add");
 	my $in = Bio::SeqIO->new(-format => 'fasta',
 				 -file   => "$outputreads.add");
 	my $out = Bio::SeqIO->new(-format => 'fasta',
@@ -796,7 +662,7 @@ sub search_and_add {
 	    $out->write_seq($s);
 	}
     }
-    return scalar @readnames;
+    return scalar keys %readnames;
 }
 
 sub make_consensus_HMM {
@@ -805,12 +671,6 @@ sub make_consensus_HMM {
 		      $paths->{HMMEMIT},$hmmfile);
     `$cmd`;
 }
-
-sub debug {
-    my @msg = @_;
-    warn(join(" ",@msg)) if $debug;
-}
-
 
 END {
     if( $cleanup ) {	
