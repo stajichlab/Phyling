@@ -13,6 +13,7 @@ module load fasta
 module load cap3
 module load exonerate
 module load diamond
+module load wu-blast
 TEMPLATE=lib/apps.conf.template
 CONF=lib/apps.conf
 rm -f $CONF
