@@ -4,7 +4,7 @@ use warnings;
 
 use FindBin qw($Bin);
 use lib "$FindBin::Bin/../lib/perl";
-use File::Copy qw(move);
+use File::Copy qw(move copy);
 use Env qw(PHYLINGHOME);
 use File::Spec;
 use Getopt::Long;
@@ -217,7 +217,7 @@ for my $marker ( keys %$reads_per_marker ) {
 	    -M $reads_file > -M $marker_table) {
 	    &retrieve_reads($fasta_file,\@reads,$reads_file);
 	}
-	
+	&run_nrdb($reads_file);
 #	my $contigsfile = &assemble_reads_phrap($reads_file);
 	my $contigsfile = &assemble_reads_cap3($reads_file);
 	my $contig_count = &PHYling::seqcount($contigsfile);
@@ -236,7 +236,7 @@ for my $marker ( keys %$reads_per_marker ) {
 					$reads_file);
 	    warn("added $added reads to $reads_file\n");
 	    last if $added == 0;
-	    
+	    &run_nrdb($reads_file);
 	    #$contigsfile = &assemble_reads_phrap($reads_file);
 	    $contigsfile = &assemble_reads_cap3($reads_file);
 	    my $newcount = &PHYling::seqcount($contigsfile);
@@ -312,6 +312,15 @@ sub make_2bit_file {
 	`$cmd`;
     }
     $base;
+}
+
+sub run_nrdb {
+    my $file = shift;
+    my $cmd = sprintf("%s -d' ' -o %s %s",$paths->{NRDB}, "$file.nr",$file);
+    warn("$cmd\n");
+    my $rc = `$cmd`;
+    warn("rc=$rc\n");
+    copy("$file.nr",$file);
 }
 
 sub trim_aln {
