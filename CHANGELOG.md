@@ -12,6 +12,8 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 - The error occurs when the total number of threads assigned exceeds 4 times the number of jobs during hmmsearch step in the align
   module.
 
+- Unexpected breaks caused by directory being incorporated as inputs in align module.
+
 ## [2.3.0] - 2025-07-24
 
 ### Added

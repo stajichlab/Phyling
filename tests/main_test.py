@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import argparse
 import importlib
 import logging
 from pathlib import Path
@@ -40,3 +40,32 @@ def test_main_verbose(caplog: pytest.LogCaptureFixture):
         assert main.main(["download", "list", "-v"]) == main.main(["download", "list", "--verbose"])
 
     assert "Debug mode enabled" in caplog.text
+
+
+def test_main_FileHandler(monkeypatch, tmp_path: Path):
+    def dummy_func(**kwargs):
+        return 0
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--verbose", action="store_true")
+    parser.set_defaults(func=dummy_func)
+    monkeypatch.setattr(main, "menu", lambda: parser)
+
+    assert main.main(["--output", str(tmp_path)]) == 0
+
+    assert (tmp_path / "log.txt").exists()
+
+def test_main_KeyboardInterrupt(monkeypatch, caplog: pytest.LogCaptureFixture):
+    def dummy_func(**kwargs):
+        raise KeyboardInterrupt
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--verbose", action="store_true")
+    parser.set_defaults(func=dummy_func)
+    monkeypatch.setattr(main, "menu", lambda: parser)
+
+    with caplog.at_level(logging.WARNING):
+        assert main.main(["--verbose"]) == 1
+
+    assert "Terminated by user." in caplog.text

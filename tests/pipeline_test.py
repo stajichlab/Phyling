@@ -5,7 +5,7 @@ import os
 from argparse import ArgumentParser
 from itertools import product
 from pathlib import Path
-from shutil import copytree
+from shutil import copytree, rmtree
 
 import pytest
 from Bio import AlignIO
@@ -18,6 +18,24 @@ from phyling.pipeline import align, download, filter, tree
 def parser() -> ArgumentParser:
     """Fixture to create a new parser for each test."""
     return ArgumentParser(add_help=False)
+
+
+@pytest.fixture
+def make_empty_dir():
+    created_dirs = []
+
+    def _make_dir(base_folder: Path, name: str = "test_dir"):
+        test_dir = Path(base_folder) / name
+        test_dir.mkdir(parents=True, exist_ok=True)
+        created_dirs.append(test_dir)
+        return test_dir
+
+    yield _make_dir
+
+    # cleanup after test
+    for d in created_dirs:
+        if d.exists():
+            rmtree(d)
 
 
 def is_subset(d1: dict, d2: dict):
@@ -188,6 +206,12 @@ class TestAlign:
             ]
         )
         assert samples == expected_samples
+
+    def test_align_dir_as_inputs(self, make_empty_dir, tmp_path: Path):
+        make_empty_dir(self.inputs_pep[0], "empty_dir")
+        with pytest.raises(IsADirectoryError) as excinfo:
+            align.align(self.inputs_pep[0], tmp_path, markerset="poxviridae_odb10")
+        assert "Input files contain directory" in str(excinfo.value)
 
     def test_align_too_few_inputs(self, tmp_path: Path):
         with pytest.raises(ValueError) as excinfo:

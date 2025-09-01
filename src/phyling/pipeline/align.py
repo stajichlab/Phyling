@@ -214,6 +214,9 @@ def _args_check(
             inputs = tuple(Path(inputs).iterdir())
             if not inputs:
                 raise FileNotFoundError("Empty input directory.")
+    for sample in inputs:
+        if sample.is_dir():
+            raise IsADirectoryError("Input files contain directory.")
     if len(inputs) < 4:
         raise ValueError("Requires at least 4 samples.")
 
