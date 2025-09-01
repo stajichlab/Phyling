@@ -14,6 +14,8 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Unexpected breaks caused by directory being incorporated as inputs in align module.
 
+- Temporarily fix pyfaidx below 0.9.0.
+
 ## [2.3.0] - 2025-07-24
 
 ### Added
