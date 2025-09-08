@@ -53,7 +53,7 @@ jobs:
           key: pip-${{ runner.os }}-${{ matrix.python }}-${{ hashFiles('requirements.txt') }}
 
       - name: Set up Python ${{ matrix.python }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
 
