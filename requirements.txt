@@ -3,5 +3,5 @@ clipkit>=2.1.1
 matplotlib>=3.5.3
 numpy>=2.0.2
 phykit>=2.0.1
-pyfaidx>=0.8.1.3,<0.9.0
+pyfaidx>=0.8.1.3,<0.10.0
 pyhmmer>=0.11.0
