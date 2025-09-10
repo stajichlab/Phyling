@@ -7,6 +7,8 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.3.1] - 2025-09-10
+
 ### Fixed
 
 - The error occurs when the total number of threads assigned exceeds 4 times the number of jobs during hmmsearch step in the align
@@ -187,7 +189,9 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Implement back-translation to convert the peptide MSA results to DNA counterpart when receiving coding sequence fasta as inputs.
 
-[Unreleased]: https://github.com/stajichlab/Phyling/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/stajichlab/Phyling/compare/v2.3.1...HEAD
+
+[2.3.1]: https://github.com/stajichlab/Phyling/compare/v2.3.0...v2.3.1
 
 [2.3.0]: https://github.com/stajichlab/Phyling/compare/v2.2.0...v2.3.0
 
