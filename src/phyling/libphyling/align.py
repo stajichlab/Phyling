@@ -647,7 +647,11 @@ class SearchHitsManager:
             path (Path): Path for temporary storage.
         """
         try:
-            seqs_handler = Fasta(sample.file, Path(path) / f"{sample.name}.fai")
+            seqs_handler = Fasta(
+                sample.file,
+                indexname=Path(path) / f"{sample.name}.fai",
+                gzi_indexname=Path(path) / f"{sample.name}.gzi",
+            )
             for idx in indices:
                 data = self._data[idx]
                 seqrec = SeqRecord(
