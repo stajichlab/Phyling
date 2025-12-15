@@ -63,7 +63,7 @@ jobs:
           fi
 
       - name: Save cache to CHANGELOG.md and CITATION.cff
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: |
             CHANGELOG.md
