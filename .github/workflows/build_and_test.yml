@@ -108,7 +108,7 @@ jobs:
           pytest -vv --cov=$package_name --cov-config=.coveragerc --cov-report=xml --runslow
 
       - name: Upload coverage.xml artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-report-${{ matrix.python }}
           path: coverage.xml
