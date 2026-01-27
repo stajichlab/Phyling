@@ -71,7 +71,7 @@ jobs:
           key: version-bump-v${{ steps.query-release-info.outputs.version }}-${{ github.run_id }}
 
       - name: Repository Dispatch
-        uses: peter-evans/repository-dispatch@v3
+        uses: peter-evans/repository-dispatch@v4
         with:
           event-type: release
           client-payload: >-
