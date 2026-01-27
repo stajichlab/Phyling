@@ -10,7 +10,7 @@ jobs:
     steps:
       - name: Cache muscle
         id: cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.local/bin/muscle
           key: ${{ runner.os }}-muscle
