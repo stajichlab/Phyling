@@ -14,6 +14,6 @@ dependencies:
   - numpy>=2.0.2
   - phykit>=2.0.1
   - pyfaidx>=0.9.0.3
-  - pyhmmer>=0.11.0,<0.12.0
+  - pyhmmer>=0.12.0
   - python>=3.9
   - raxml-ng>=1.2.2

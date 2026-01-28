@@ -86,7 +86,7 @@ class HMMMarkerSet(_abc.DataListABC[HMM]):
                     with HMMFile(d) as hmm_profile:
                         profile_name = Path(d).stem
                         d: HMM = hmm_profile.read()
-                        d.name = profile_name.encode()
+                        d.name = profile_name
                 if not isinstance(d, self._bound_class):
                     raise TypeError(f"{type(d).__qualname__} cannot be converted to {self._bound_class.__qualname__}.")
                 self.append(d)
@@ -99,7 +99,7 @@ class HMMMarkerSet(_abc.DataListABC[HMM]):
                     for line in csv.reader(f, delimiter="\t"):
                         if line[0].startswith("#"):
                             continue
-                        cutoffs_dict[line[0].encode()] = float(line[1])
+                        cutoffs_dict[line[0]] = float(line[1])
                 self.set_cutoffs(cutoffs_dict)
             else:
                 raise RuntimeError(f"{cutoff_file} is not a file.")
@@ -108,16 +108,16 @@ class HMMMarkerSet(_abc.DataListABC[HMM]):
     def __getitem__(self, key: int) -> HMM: ...
 
     @overload
-    def __getitem__(self, key: str | bytes) -> HMM: ...
+    def __getitem__(self, key: str) -> HMM: ...
 
     @overload
     def __getitem__(self, key: slice) -> HMMMarkerSet: ...
 
-    def __getitem__(self, key: int | slice | str | bytes) -> HMM | HMMMarkerSet:
+    def __getitem__(self, key: int | slice | str) -> HMM | HMMMarkerSet:
         """Retrieve HMM profile(s) by index or name.
 
         Args:
-            key (int | slice | str | bytes): Index, slice, or name of the profile.
+            key (int | slice | str): Index, slice, or name of the profile.
 
         Returns:
             HMM | HMMMarkerSet: The HMM profile or a subset of profiles.
@@ -126,8 +126,6 @@ class HMMMarkerSet(_abc.DataListABC[HMM]):
             KeyError: If the specified name is not found.
         """
         if isinstance(key, str):
-            key = key.encode()
-        if isinstance(key, bytes):
             if key not in self.names:
                 raise KeyError(f"{key}: Sample not found.")
             return self._data[self.names.index(key)]
@@ -142,7 +140,7 @@ class HMMMarkerSet(_abc.DataListABC[HMM]):
         Returns:
             bool: True if all profiles have cutoffs, otherwise False.
         """
-        no_cutoffs = [hmm.name.decode() for hmm in self if not hmm.cutoffs.trusted]
+        no_cutoffs = [hmm.name for hmm in self if not hmm.cutoffs.trusted]
         if no_cutoffs:
             if verbose:
                 logger.warning(
@@ -155,16 +153,16 @@ class HMMMarkerSet(_abc.DataListABC[HMM]):
         return True
 
     @overload
-    def set_cutoffs(self, cutoffs_dict: dict[bytes, float]) -> None: ...
+    def set_cutoffs(self, cutoffs_dict: dict[str, float]) -> None: ...
 
     @overload
     def set_cutoffs(self, **kwargs) -> None: ...
 
-    def set_cutoffs(self, cutoffs_dict: dict[bytes, float] | None = None, /, **kwargs) -> None:
+    def set_cutoffs(self, cutoffs_dict: dict[str, float] | None = None, /, **kwargs) -> None:
         """Set model-specific bitscore cutoffs for HMM profiles.
 
         Args:
-            cutoffs_dict (dict[bytes, float] | None): Dictionary of cutoffs.
+            cutoffs_dict (dict[str, float] | None): Dictionary of cutoffs.
             **kwargs: Additional cutoff values by profile name.
         """
         cutoffs_dict = dict(cutoffs_dict, **kwargs)
@@ -237,8 +235,10 @@ class SampleSeqs(_abc.SeqFileWrapperABC):
             SeqTypes.DNA: Alphabet.dna(),
             SeqTypes.RNA: Alphabet.rna(),
         }
-        with SequenceFile(self.file, digital=True, alphabet=seqtype_conversion[self.seqtype]) as sf:
+        f = gzip.open(self.file) if is_gzip_file(self.file) else open(self.file, "rb")
+        with SequenceFile(f, digital=True, alphabet=seqtype_conversion[self.seqtype]) as sf:
             seqblock: DigitalSequenceBlock = sf.read_block()
+        f.close()
 
         if self.seqtype == SeqTypes.PEP:
             logger.debug("%s contains %s sequences.", self.file, self.seqtype)
@@ -282,7 +282,7 @@ class SampleSeqs(_abc.SeqFileWrapperABC):
         """Process the peptide sequences."""
         while seqblock:
             seq = seqblock.pop()
-            seq.description = self.name.encode()
+            seq.description = self.name
             self._data.append(seq)
 
     def _process_cds_seqs(self, seqblock: DigitalSequenceBlock) -> None:
@@ -294,11 +294,11 @@ class SampleSeqs(_abc.SeqFileWrapperABC):
         original_size = len(seqblock)
         while seqblock:
             seq = seqblock.pop(0)
-            seq.description = self.name.encode()
+            seq.description = self.name
             try:
                 self._data.append(seq.translate())
             except ValueError:
-                problematic_seqs_name.append(seq.name.decode())
+                problematic_seqs_name.append(seq.name)
 
         if problematic_seqs_name:
             logger.warning(
@@ -743,13 +743,13 @@ class OrthologSeqs(SampleSeqs):
                 self._data_cds.append(
                     SeqRecord(
                         Seq(seq.textize().sequence),
-                        id=seq.name.decode(),
-                        name=seq.name.decode(),
-                        description=seq.description.decode(),
+                        id=seq.name,
+                        name=seq.name,
+                        description=seq.description,
                     )
                 )
             except ValueError:
-                problematic_seqs_name.append(seq.name.decode())
+                problematic_seqs_name.append(seq.name)
 
         if problematic_seqs_name:
             logger.warning(
@@ -924,7 +924,7 @@ class OrthologList(_abc.SeqDataListABC[OrthologSeqs]):
             progress.start()
 
             params_per_task = [
-                (sample, method, hmms[sample.name.encode()] if hmms else None, threads, counter, condition) for sample in samples
+                (sample, method, hmms[sample.name] if hmms else None, threads, counter, condition) for sample in samples
             ]
             try:
                 if logger.parent.getEffectiveLevel() > 10:
@@ -978,7 +978,7 @@ def run_hmmsearch(sample: SampleSeqs, hmms: HMMMarkerSet, *, evalue: float = 1e-
         while idx < min(2, len(hits)):
             hit = hits[idx]
             if hit.reported:
-                reported.append(SearchHit(hmm.decode(), sample, hit.name.decode()))
+                reported.append(SearchHit(hmm, sample, hit.name))
             idx += 1
         if len(reported) > 1:
             continue
@@ -1041,8 +1041,8 @@ def run_muscle(ortholog: OrthologSeqs, *, threads: int = 1) -> MultipleSeqAlignm
                 (
                     SeqRecord(
                         Seq(seq.textize().sequence),
-                        id=seq.name.decode(),
-                        name=seq.name.decode(),
+                        id=seq.name,
+                        name=seq.name,
                         description=ortholog.name,
                     )
                     for seq in ortholog
