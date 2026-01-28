@@ -237,9 +237,8 @@ class SampleSeqs(_abc.SeqFileWrapperABC):
             SeqTypes.DNA: Alphabet.dna(),
             SeqTypes.RNA: Alphabet.rna(),
         }
-        seqblock: DigitalSequenceBlock = SequenceFile(
-            self.file, digital=True, alphabet=seqtype_conversion[self.seqtype]
-        ).read_block()
+        with SequenceFile(self.file, digital=True, alphabet=seqtype_conversion[self.seqtype]) as sf:
+            seqblock: DigitalSequenceBlock = sf.read_block()
 
         if self.seqtype == SeqTypes.PEP:
             logger.debug("%s contains %s sequences.", self.file, self.seqtype)
