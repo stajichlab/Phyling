@@ -439,14 +439,8 @@ cd Phyling-2.X.X
 pip install .
 ```
 
-To avoid altering the base environment, it's advisable to install the software in a dedicated Conda environment. Please use the
-environment.yml to create environment and install all the required packages.
+However, some of the Phyling dependencies do not available on pip, so you need to install them manually or through Conda as well.
 
-```sh
-cd Phyling-2.X.X
-conda env create -f environment.yml
-pip install .
-```
 ### git clone the project
 
 You can also directly `git clone` the main or other branches.
@@ -482,25 +476,25 @@ module. If the specified marker set is not found in the first path, phyling will
 `$PHYLING_DB`. However, the first path should be writable by user; otherwise, Phyling will still create a `.phyling` folder in the
 home directory to store marker sets.
 
-### Install additional packages for developing (developer only)
+### Install Phyling for developing (developer only)
 
 Developer should clone the GitHub project directly instead of downloading from the releases. Some of the files for developing
 purpose only are not included in the releases.
 
-In addition to the requirements listed above, we use the package [pre-commit] for code formatting. Developer can install it
-through Conda by:
+For convenience we provide a Conda env file. Please use the dev_environment.yml to setup a conda environment and install the
+required packages and Phyling.
 
 ```sh
-conda install pre-commit>=3.4.0
+conda env create --file dev_environment.yml
 ```
 
-For convenience we also provide the additional Conda env file. Please use the dev_additional_packages.yml to install the additional packages.
+or use the command to update the existing environment.
 
 ```sh
-conda env update -f dev_additional_packages.yml
+conda env update -f dev_environment.yml --prune
 ```
 
-Go into the Phyling folder and set up the git hook scripts.
+Before making commit. Please go into the Phyling folder and set up the [pre-commit] first.
 
 ```sh
 cd Phyling
