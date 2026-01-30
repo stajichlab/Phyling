@@ -3,10 +3,10 @@ name: CI/Conda build and test
 on:
   push:
     branches: ["main", "dev"]
-    paths: ["**.py", "environment.yml"]
+    paths: ["**.py", "pyproject.toml", "dev_environment.yml"]
   pull_request:
     branches: ["main", "dev"]
-    paths: ["**.py", "environment.yml"]
+    paths: ["**.py", "pyproject.toml", "dev_environment.yml"]
   workflow_dispatch:
   workflow_call:
 
@@ -21,18 +21,11 @@ jobs:
         with:
           fetch-tags: true
 
-      - run: git fetch --tags
-
       - uses: mamba-org/setup-micromamba@v2
         with:
-          environment-file: environment.yml
+          environment-file: dev_environment.yml
           create-args: >-
-            python=3.10
-            pytest
-            pytest-cov
-            pytest-dependency
-            pytest-env
-            pytest-order
+            python=3.13
 
       - name: Lint with Ruff
         uses: astral-sh/ruff-action@v3

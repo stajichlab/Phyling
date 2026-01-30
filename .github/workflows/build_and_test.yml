@@ -3,10 +3,10 @@ name: CI/build and test
 on:
   push:
     branches: ["main", "dev"]
-    paths: ["**.py", "requirements.txt"]
+    paths: ["**.py", "pyproject.toml"]
   pull_request:
     branches: ["main", "dev"]
-    paths: ["**.py", "requirements.txt"]
+    paths: ["**.py", "pyproject.toml"]
   workflow_dispatch:
   workflow_call:
 
@@ -44,33 +44,26 @@ jobs:
         with:
           fetch-tags: true
 
-      - run: git fetch --tags
-
       - name: Cache Python packages
         uses: actions/cache@v5
         with:
           path: ~/.cache/pip
-          key: pip-${{ runner.os }}-${{ matrix.python }}-${{ hashFiles('requirements.txt') }}
+          key: pip-${{ runner.os }}-${{ matrix.python }}-${{ hashFiles('pyproject.toml') }}
 
       - name: Set up Python ${{ matrix.python }}
         uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-
-          python -m pip install pytest pytest-cov pytest-dependency pytest-env pytest-order
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-
       - name: Lint with Ruff
         uses: astral-sh/ruff-action@v3
         with:
           version: "latest"
 
-      - name: Install package
-        run: pip install .
+      - name: Install package and dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[dev]"
 
       - name: Cache muscle
         uses: actions/cache/restore@v5
@@ -101,6 +94,9 @@ jobs:
         with:
           path: ~/.local/bin/iqtree2
           key: ${{ runner.os }}-IQTree
+
+      - name: Add local bin to PATH
+        run: echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Test with pytest
         run: |
