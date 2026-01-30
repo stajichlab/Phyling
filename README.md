@@ -478,10 +478,10 @@ home directory to store marker sets.
 
 ### Install Phyling for developing (developer only)
 
-Developer should clone the GitHub project directly instead of downloading from the releases. Some of the files for developing
+Developer should [clone the GitHub project](#git-clone-the-project) directly instead of downloading from the releases. Some of the files for developing
 purpose only are not included in the releases.
 
-For convenience we provide a Conda env file. Please use the dev_environment.yml to setup a conda environment and install the
+For convenience we provide a Conda env file. Please use the `dev_environment.yml` to setup a conda environment and install the
 required packages and Phyling.
 
 ```sh
@@ -494,7 +494,7 @@ or use the command to update the existing environment.
 conda env update -f dev_environment.yml --prune
 ```
 
-Before making commit. Please go into the Phyling folder and set up the [pre-commit] first.
+Before making commit, please go into the Phyling folder and set up the [pre-commit] first.
 
 ```sh
 cd Phyling
