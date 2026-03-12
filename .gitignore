@@ -163,3 +163,5 @@ example/*
 !example/pep/
 !example/cds/
 *.ipynb
+
+.vscode
