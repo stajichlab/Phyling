@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import csv
 import gzip
+import logging
 import tempfile
 import traceback
-from multiprocessing import Manager, Pool
+from functools import partial
+from multiprocessing import Pool
 from multiprocessing.pool import ThreadPool
-from multiprocessing.sharedctypes import Synchronized
-from multiprocessing.synchronize import Condition
 from pathlib import Path
 from typing import Any, Iterator, Literal, NamedTuple, Sequence, overload
 
@@ -24,8 +24,8 @@ from pyhmmer.plan7 import HMM, HMMFile
 
 from ..exception import EmptyWarning, SeqtypeError
 from ..external import Muscle
-from . import SeqTypes, _abc, logger
-from ._utils import guess_seqtype, is_gzip_file, load_msa, progress_daemon
+from . import SeqTypes, _abc
+from ._utils import guess_seqtype, is_gzip_file, load_msa
 
 __all__ = [
     "SampleSeqs",
@@ -38,6 +38,8 @@ __all__ = [
     "run_muscle",
     "bp_mrtrans",
 ]
+logger = logging.getLogger(__name__)
+_shared_hmms = None
 
 _abc.FileWrapperABC.register(HMM)
 
@@ -388,33 +390,33 @@ class SampleList(_abc.SeqDataListABC[SampleSeqs]):
         if not 0 < jobs <= len(self):
             raise RuntimeError(f"jobs = {jobs}: jobs should be between 1 and {len(self)}")
 
-        with Manager() as manager:
-            counter = manager.Value("i", 0)
-            condition = manager.Condition()
-
-            progress = progress_daemon(len(self), counter, condition, step=min(max(1, len(self) // 200 * 10), 50))
-            progress.start()
-
-            try:
-                if logger.parent.getEffectiveLevel() > 10:
-                    logger.setLevel("WARNING")
-                if jobs <= 1:
-                    logger.debug("Sequential mode with %s threads.", threads)
-                    search_res = [_search_helper(sample, hmms, evalue, threads, counter, condition) for sample in self]
-                else:
-                    logger.debug("Multiprocesses mode with %s jobs and %s threads for each.", jobs, threads)
-                    with ThreadPool(jobs) as pool:
-                        search_res = pool.starmap(
-                            _search_helper, [(sample, hmms, evalue, threads, counter, condition) for sample in self]
-                        )
-            except ValueError:
-                logger.error("Input sequence reading error. Did you assign the wrong seqtype?\n%s", traceback.format_exc())
-                raise
-            except Exception:
-                logger.error("%s", traceback.format_exc())
-                raise
-            finally:
-                logger.setLevel(logger.parent.getEffectiveLevel())
+        step_size = min(max(1, len(self) // 200 * 10), 50)
+        total = len(self)
+        search_res = []
+        try:
+            # if logger.parent.getEffectiveLevel() > 10:
+            #     logger.setLevel("WARNING")
+            if jobs <= 1:
+                logger.debug("Sequential mode with %s threads.", threads)
+                for i, sample in enumerate(self, 1):
+                    res = _search_helper(sample, hmms, evalue, threads)
+                    search_res.append(res)
+                    if i % step_size == 0 or i == total:
+                        logger.info("Progress: %d / %d", i, total)
+            else:
+                logger.debug("Multiprocesses mode with %s jobs and %s threads for each.", jobs, threads)
+                with ThreadPool(jobs) as pool:
+                    async_tasks = [pool.apply_async(_search_helper, (sample, hmms, evalue, threads)) for sample in self]
+                    for i, t in enumerate(async_tasks, 1):
+                        search_res.append(t.get())
+                        if i % step_size == 0 or i == total:
+                            logger.info("Progress: %d / %d", i, total)
+        except ValueError:
+            logger.error("Input sequence reading error. Did you assign the wrong seqtype?\n%s", traceback.format_exc())
+            raise
+        except Exception:
+            logger.error("%s", traceback.format_exc())
+            raise
 
         search_res = [hit for res in search_res for hit in res]
         return search_res
@@ -915,32 +917,31 @@ class OrthologList(_abc.SeqDataListABC[OrthologSeqs]):
         if not 0 < jobs <= len(self):
             raise RuntimeError(f"jobs = {jobs}: jobs should be between 1 and {len(self)}")
 
-        with Manager() as manager:
-            counter = manager.Value("i", 0)
-            condition = manager.Condition()
-            samples = manager.list(self)
+        step_size = min(max(10, len(self) // 200 * 50), 500)
+        total = len(self)
+        msa = []
+        params_gen = ((sample, method, threads) for sample in self)
 
-            progress = progress_daemon(len(self), counter, condition, step=min(max(10, len(self) // 200 * 50), 500))
-            progress.start()
-
-            params_per_task = [
-                (sample, method, hmms[sample.name] if hmms else None, threads, counter, condition) for sample in samples
-            ]
-            try:
-                if logger.parent.getEffectiveLevel() > 10:
-                    logger.setLevel("WARNING")
-                if jobs <= 1:
-                    logger.debug("Sequential mode with %s threads.", threads)
-                    msa = [_align_helper(*params) for params in params_per_task]
-                else:
-                    logger.debug("Multiprocesses mode with %s jobs and %s threads for each.", jobs, threads)
-                    with Pool(jobs) as pool:
-                        msa = pool.starmap(_align_helper, params_per_task)
-            except Exception:
-                logger.error("%s", traceback.format_exc())
-                raise
-            finally:
-                logger.setLevel(logger.parent.getEffectiveLevel())
+        try:
+            if jobs <= 1:
+                logger.debug("Sequential mode with %s threads.", threads)
+                for i, (sample, method, threads) in enumerate(params_gen, 1):
+                    hmms_ = hmms[sample.name] if hmms else None
+                    msa.append(_align_helper(sample, method, hmms_, threads))
+                    if i % step_size == 0 or i == total:
+                        logger.info("Progress: %d / %d", i, total)
+            else:
+                logger.debug("Multiprocesses mode with %s jobs and %s threads for each.", jobs, threads)
+                func = partial(_align_helper, method=method, threads=threads)
+                with Pool(processes=jobs, initializer=_init_worker, initargs=(hmms,)) as pool:
+                    results = pool.imap(func, self)
+                    for i, r in enumerate(results, 1):
+                        msa.append(r)
+                        if i % step_size == 0 or i == total:
+                            logger.info("Progress: %d / %d", i, total)
+        except Exception:
+            logger.error("%s", traceback.format_exc())
+            raise
         return msa
 
 
@@ -984,7 +985,7 @@ def run_hmmsearch(sample: SampleSeqs, hmms: HMMMarkerSet, *, evalue: float = 1e-
             continue
         r.extend(reported)
 
-    logger.info("Hmmsearch on %s is done.", sample.name)
+    logger.debug("Hmmsearch on %s is done.", sample.name)
     return r
 
 
@@ -1010,7 +1011,7 @@ def run_hmmalign(ortholog: OrthologSeqs, hmm: HMM) -> MultipleSeqAlignment:
         f.seek(0)
         alignment = load_msa(Path(f.name))
         alignment.annotations = {"seqtype": SeqTypes.PEP}
-        logger.info("Hmmalign on %s is done.", ortholog.name)
+        logger.debug("Hmmalign on %s is done.", ortholog.name)
         return alignment
     finally:
         f.close()
@@ -1059,7 +1060,7 @@ def run_muscle(ortholog: OrthologSeqs, *, threads: int = 1) -> MultipleSeqAlignm
         f_aln.seek(0)
         alignment = load_msa(Path(f_aln.name))
     alignment.annotations = {"seqtype": SeqTypes.PEP}
-    logger.info("Muscle on %s is done.", ortholog.name)
+    logger.debug("Muscle on %s is done.", ortholog.name)
     return alignment
 
 
@@ -1084,23 +1085,34 @@ def bp_mrtrans(pep_msa: MultipleSeqAlignment, cds_rec: list[SeqRecord]) -> Multi
     cds_msa = MultipleSeqAlignment([], annotations={"seqtype": SeqTypes.DNA})
     for pep_seq, cds_seq in zip(pep_msa, cds_rec):
         dna_idx = 0
-        dna_align = ""
-        for align_idx in range(len(pep_seq)):
-            codon = cds_seq[dna_idx : dna_idx + codon_size].seq
-            if pep_seq[align_idx] == gap or dna_idx >= len(cds_seq):
-                dna_align += codon_gap
-                if codon not in stop_codons:
-                    continue
-            else:
-                dna_align += codon
-            dna_idx += codon_size
+        dna_align = []
         info = {
             "id": cds_seq.id if hasattr(cds_seq, "id") else pep_seq.id,
             "name": cds_seq.name if hasattr(cds_seq, "name") else pep_seq.name,
             "description": cds_seq.description if hasattr(cds_seq, "description") else pep_seq.description,
         }
-        cds_msa.append(SeqRecord(Seq(dna_align), **info))
+        cds_seq: str = str(cds_seq.seq).upper()
+        for align_idx in range(len(pep_seq)):
+            codon = cds_seq[dna_idx : dna_idx + codon_size]
+
+            if pep_seq[align_idx] == gap or dna_idx >= len(cds_seq):
+                dna_align.append(codon_gap)
+                if codon not in stop_codons:
+                    continue
+            else:
+                dna_align.append(codon)
+            dna_idx += codon_size
+        cds_msa.append(SeqRecord(Seq(("".join(dna_align))), **info))
     return cds_msa
+
+
+def _init_worker(hmms):
+    """
+    This function sets the global variable in the worker's scope.
+    On Linux with 'fork', this is essentially a pointer to the parent's memory.
+    """
+    global _shared_hmms
+    _shared_hmms = hmms
 
 
 def _search_helper(
@@ -1108,8 +1120,6 @@ def _search_helper(
     hmms: HMMMarkerSet,
     evalue: float = 1e-10,
     threads: int = 1,
-    counter: Synchronized | None = None,
-    condition: Condition | None = None,
 ) -> list[SearchHit]:
     """Helper function to perform hmmsearch.
 
@@ -1117,47 +1127,34 @@ def _search_helper(
         instance (SampleSeqs): The sample sequences to search within.
         hmms (HMMMarkerSet): The set of HMM markers to search for.
         evalue (float, optional): E-value threshold for HMM search. Defaults to 1e-10.
-        jobs (int, optional): Number of parallel processes. Defaults to 1.
         threads (int, optional): Number of threads per process. Defaults to 1.
 
     Returns:
         list[SearchHit]: A list of search hits, each representing the best match for a marker.
     """
     r = instance.search(hmms=hmms, evalue=evalue, threads=threads)
-    if counter and condition:
-        with condition:
-            counter.value += 1
-            condition.notify()
     return r
 
 
 def _align_helper(
     instance: OrthologSeqs,
     method: str,
-    hmm: HMM | None = None,
     threads: int = 1,
-    counter: Synchronized | None = None,
-    condition: Condition | None = None,
 ):
     """Helper function to perform alignment using a specified method.
 
     Args:
         instance (OrthologSeqs): The sequences to align.
         method (str): Alignment method, either 'hmmalign' or 'muscle'.
-        hmm (HMM, optional): HMM model for 'hmmalign'. Defaults to None.
         threads (int, optional): Number of threads for 'muscle'. Defaults to 1.
 
     Returns:
         MultipleSeqAlignment: Resulting alignment.
     """
+    global _shared_hmms
+    hmm = _shared_hmms[instance.name] if _shared_hmms else None
     if method == "hmmalign":
         r = instance.align(method=method, hmm=hmm)
     else:
         r = instance.align(method=method, threads=threads)
-
-    if counter and condition:
-        with condition:
-            counter.value += 1
-            condition.notify()
-
     return r

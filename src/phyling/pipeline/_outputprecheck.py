@@ -7,10 +7,10 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 
-from ..libphyling import FileExts, TreeOutputFiles
-from ..libphyling._utils import CheckAttrs, remove_dirs, remove_files
-from ..libphyling.align import SampleList, SampleSeqs, SearchHitsManager
-from ..libphyling.tree import MFA2Tree, MFA2TreeList
+from ..lib import FileExts, TreeOutputFiles
+from ..lib._utils import CheckAttrs, remove_dirs, remove_files
+from ..lib.align import SampleList, SampleSeqs, SearchHitsManager
+from ..lib.tree import MFA2Tree, MFA2TreeList
 from . import logger
 
 

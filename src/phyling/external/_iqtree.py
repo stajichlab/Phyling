@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import Literal, overload
 
 from .. import AVAIL_CPUS
-from ..libphyling import SeqTypes, TreeMethods
-from ..libphyling._utils import check_binary
+from ..lib import SeqTypes, TreeMethods
+from ..lib._utils import check_binary
 from ._abc import BinaryWrapper, TreeToolWrapper
 from ._models import (
     ALL_MODELS,

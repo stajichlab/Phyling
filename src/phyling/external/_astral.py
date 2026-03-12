@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..libphyling._utils import check_binary
+from ..lib._utils import check_binary
 from ._abc import BinaryWrapper
 
 ASTRAL_BIN = check_binary("ASTRAL", ("astral",), "bioconda::aster", "https://github.com/chaoszhang/ASTER")

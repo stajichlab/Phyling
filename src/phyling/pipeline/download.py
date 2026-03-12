@@ -14,8 +14,8 @@ import shutil
 from urllib.error import URLError
 
 from .. import CFG_DIRS
-from ..libphyling._utils import Timer
-from ..libphyling.download import BuscoParser
+from ..lib._utils import Timer
+from ..lib.download import BuscoParser
 
 __all__ = ["download"]
 

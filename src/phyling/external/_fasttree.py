@@ -6,8 +6,8 @@ import re
 from pathlib import Path
 from typing import Literal
 
-from ..libphyling import TreeMethods
-from ..libphyling._utils import check_binary
+from ..lib import TreeMethods
+from ..lib._utils import check_binary
 from ._abc import TreeToolWrapper
 from ._models import DNA_MODELS, PEP_MODELS
 

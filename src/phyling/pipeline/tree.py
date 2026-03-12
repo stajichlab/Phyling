@@ -14,6 +14,7 @@ as output. Additionally, users can choose to obtain a matplotlib-style figure us
 from __future__ import annotations
 
 import argparse
+import logging
 import shutil
 import time
 from pathlib import Path
@@ -24,10 +25,11 @@ from Bio import Phylo
 
 from .. import AVAIL_CPUS
 from ..external import ModelFinder
-from ..libphyling import FileExts, SeqTypes, TreeMethods, TreeOutputFiles
-from ..libphyling._utils import Timer, check_threads
-from ..libphyling.tree import MFA2Tree, MFA2TreeList
-from . import logger
+from ..lib import FileExts, SeqTypes, TreeMethods, TreeOutputFiles
+from ..lib._utils import Timer, check_threads
+from ..lib.tree import MFA2Tree, MFA2TreeList
+
+logger = logging.getLogger(__name__)
 
 
 def menu(parser: argparse.ArgumentParser) -> None:

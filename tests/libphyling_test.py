@@ -22,7 +22,7 @@
 
 
 # @pytest.fixture(scope="class")
-# def copy_libphyling_ckp(shared_tmpdir_class):
+# def copy_lib_ckp(shared_tmpdir_class):
 #     shutil.copy("tests/data/pep_align/.align.ckp", shared_tmpdir_class / ".align.ckp")
 #     AlignPrecheck.setup(folder=shared_tmpdir_class)
 
@@ -419,7 +419,7 @@
 #         with pytest.raises(NotADirectoryError, match="already existed but not a folder"):
 #             AlignPrecheck.precheck(self.params, self.inputs)
 
-#     @pytest.mark.usefixtures("copy_libphyling_ckp")
+#     @pytest.mark.usefixtures("copy_lib_ckp")
 #     def test_precheck_dropsample(self, caplog: pytest.LogCaptureFixture):
 #         inputs = deepcopy(self.inputs)
 #         popped_sample = inputs.pop(-1)
@@ -430,7 +430,7 @@
 #         assert f"Remove hits corresponding to {popped_sample.name} from orthologs" in caplog.text
 #         assert need_search(updated_inputs) == 0
 
-#     @pytest.mark.usefixtures("copy_libphyling_ckp")
+#     @pytest.mark.usefixtures("copy_lib_ckp")
 #     def test_precheck_addsample(self):
 #         inputs = deepcopy(self.inputs)
 #         inputs.append(SampleSeqs(Path("tests/data/Monkeypox_virus.faa.gz")))
@@ -439,7 +439,7 @@
 #         updated_inputs, _ = AlignPrecheck.precheck(params, inputs)
 #         assert need_search(updated_inputs) == 1
 
-#     @pytest.mark.usefixtures("copy_libphyling_ckp")
+#     @pytest.mark.usefixtures("copy_lib_ckp")
 #     def test_precheck_change_method(self):
 #         inputs = deepcopy(self.inputs)
 #         params = self.params.copy()
@@ -447,7 +447,7 @@
 #         updated_inputs, _ = AlignPrecheck.precheck(params, inputs)
 #         assert need_search(updated_inputs) == 0
 
-#     @pytest.mark.usefixtures("copy_libphyling_ckp")
+#     @pytest.mark.usefixtures("copy_lib_ckp")
 #     def test_precheck_change_non_trim(self):
 #         inputs = deepcopy(self.inputs)
 #         params = self.params.copy()
@@ -455,7 +455,7 @@
 #         updated_inputs, _ = AlignPrecheck.precheck(params, inputs)
 #         assert need_search(updated_inputs) == 0
 
-#     @pytest.mark.usefixtures("copy_libphyling_ckp")
+#     @pytest.mark.usefixtures("copy_lib_ckp")
 #     def test_precheck_change_hmm_cutoff(self):
 #         inputs = deepcopy(self.inputs)
 #         markerset = HMMMarkerSet(self.markerset_path)
@@ -464,13 +464,13 @@
 #         updated_inputs, _ = AlignPrecheck.precheck(params, inputs)
 #         assert need_search(updated_inputs) == 5
 
-#     @pytest.mark.usefixtures("copy_libphyling_ckp")
+#     @pytest.mark.usefixtures("copy_lib_ckp")
 #     def test_precheck_params_error(self):
 #         params = {"Invalid_key": "Invalid_value"}
 #         with pytest.raises(KeyError, match="Params should contain keys"):
 #             AlignPrecheck.precheck(params, self.inputs)
 
-#     @pytest.mark.usefixtures("copy_libphyling_ckp")
+#     @pytest.mark.usefixtures("copy_lib_ckp")
 #     def test_precheck_seqtype_error(self):
 #         inputs = SampleList(Path("tests/data/cds").iterdir())
 #         params = self.params.copy()
@@ -478,12 +478,12 @@
 #         with pytest.raises(SystemExit, match="Seqtype is changed. Aborted."):
 #             AlignPrecheck.precheck(params, inputs)
 
-#     @pytest.mark.usefixtures("copy_libphyling_ckp")
+#     @pytest.mark.usefixtures("copy_lib_ckp")
 #     def test_precheck_file_not_changed_error(self):
 #         with pytest.raises(SystemExit, match="Files not changed and parameters are identical to the previous run. Aborted."):
 #             AlignPrecheck.precheck(self.params, self.inputs)
 
-#     @pytest.mark.usefixtures("copy_libphyling_ckp")
+#     @pytest.mark.usefixtures("copy_lib_ckp")
 #     def test_precheck_markerset_error(self):
 #         markerset = HMMMarkerSet(Path("tests/database/alphaherpesvirinae_odb10/hmms"))
 #         params = self.params.copy()
@@ -491,7 +491,7 @@
 #         with pytest.raises(SystemExit, match="Markerset is changed. Aborted."):
 #             AlignPrecheck.precheck(params, self.inputs)
 
-#     @pytest.mark.usefixtures("copy_libphyling_ckp")
+#     @pytest.mark.usefixtures("copy_lib_ckp")
 #     def test_load_checkpoint(self):
 #         params, samplelist, orthologs = AlignPrecheck.load_checkpoint()
 #         assert isinstance(params, dict)
@@ -509,7 +509,7 @@
 
 
 # @pytest.mark.slow
-# @pytest.mark.usefixtures("copy_libphyling_ckp")
+# @pytest.mark.usefixtures("copy_lib_ckp")
 # class TestSearch:
 #     inputs = SampleList(Path("tests/data/pep").iterdir())
 #     markerset_path = Path("tests/database/poxviridae_odb10/hmms")
@@ -577,7 +577,7 @@
 #         assert len(collection) == 6
 
 
-# @pytest.mark.usefixtures("copy_libphyling_ckp")
+# @pytest.mark.usefixtures("copy_lib_ckp")
 # class TestAlign:
 #     markerset_path = Path("tests/database/poxviridae_odb10/hmms")
 #     cutoff_path = markerset_path.parent / "scores_cutoff"

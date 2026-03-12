@@ -7,7 +7,7 @@ from Bio.Align import MultipleSeqAlignment
 from clipkit.modes import TrimmingMode
 from clipkit.msa import MSA
 
-from phyling.libphyling import SeqTypes
+from phyling.lib import SeqTypes
 
 
 def trim_gaps(msa: MultipleSeqAlignment, gaps: int = 0.9) -> MultipleSeqAlignment:

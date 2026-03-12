@@ -10,7 +10,7 @@ from shutil import copytree, rmtree
 import pytest
 from Bio import AlignIO
 
-from phyling.libphyling import ALIGN_METHODS, FileExts, TreeMethods, TreeOutputFiles
+from phyling.lib import ALIGN_METHODS, FileExts, TreeMethods, TreeOutputFiles
 from phyling.pipeline import align, download, filter, tree
 
 

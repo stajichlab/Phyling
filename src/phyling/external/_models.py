@@ -11,8 +11,8 @@ from typing import Literal, TextIO
 
 import numpy as np
 
-from ..libphyling import TreeMethods
-from ..libphyling._abc import list_repr_wrapper
+from ..lib import TreeMethods
+from ..lib._abc import list_repr_wrapper
 
 # Model name in FastTree, Raxml-ng, IQ-Tree
 DNA_MODELS = np.array(

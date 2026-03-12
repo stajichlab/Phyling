@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Literal
 
 from .. import AVAIL_CPUS
-from ..libphyling import TreeMethods
-from ..libphyling._utils import check_binary
+from ..lib import TreeMethods
+from ..lib._utils import check_binary
 from ._abc import TreeToolWrapper
 from ._models import NexusHandler, RaxmlHandler
 

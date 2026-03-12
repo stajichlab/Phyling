@@ -13,6 +13,7 @@ to skip the trimming step. Finally, The alignment results are output separately 
 from __future__ import annotations
 
 import argparse
+import logging
 import re
 import time
 from multiprocessing import Manager, Pool
@@ -24,11 +25,12 @@ from Bio import SeqIO
 from .. import AVAIL_CPUS, CFG_DIRS
 from ..exception import EmptyWarning
 from ..external._libclipkit import trim_gaps
-from ..libphyling import ALIGN_METHODS, FileExts, SeqTypes
-from ..libphyling._utils import Timer, check_threads
-from ..libphyling.align import HMMMarkerSet, OrthologList, SampleList
-from . import logger
+from ..lib import ALIGN_METHODS, FileExts, SeqTypes
+from ..lib._utils import Timer, check_threads
+from ..lib.align import HMMMarkerSet, OrthologList, SampleList
 from ._outputprecheck import AlignPrecheck
+
+logger = logging.getLogger(__name__)
 
 
 def menu(parser: argparse.ArgumentParser) -> None:

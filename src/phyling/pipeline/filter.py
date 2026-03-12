@@ -8,16 +8,18 @@ set to 50 to select only the top 50 markers.
 from __future__ import annotations
 
 import argparse
+import logging
 import time
 from pathlib import Path
 from typing import Literal
 
 from .. import AVAIL_CPUS
-from ..libphyling import FileExts, SeqTypes, TreeMethods
-from ..libphyling._utils import Timer, check_threads
-from ..libphyling.tree import MFA2TreeList, TreeOutputFiles
-from . import logger
+from ..lib import FileExts, SeqTypes, TreeMethods
+from ..lib._utils import Timer, check_threads
+from ..lib.tree import MFA2TreeList, TreeOutputFiles
 from ._outputprecheck import FilterPrecheck
+
+logger = logging.getLogger(__name__)
 
 
 def menu(parser: argparse.ArgumentParser) -> None:

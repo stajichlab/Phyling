@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import gzip
+import logging
 import tempfile
 import traceback
 from functools import wraps
 from itertools import product
-from multiprocessing import Manager
 from multiprocessing.pool import ThreadPool
-from multiprocessing.sharedctypes import Synchronized
-from multiprocessing.synchronize import Condition
 from pathlib import Path
 from typing import Callable, Literal, Sequence, TypeVar, overload
 
@@ -22,10 +20,11 @@ from Bio.SeqIO import FastaIO
 from Bio.SeqRecord import SeqRecord
 
 from .. import AVAIL_CPUS
-from . import SeqTypes, TreeMethods, TreeOutputFiles, _abc, logger
-from ._utils import CheckAttrs, Timer, guess_seqtype, is_gzip_file, progress_daemon
+from . import SeqTypes, TreeMethods, TreeOutputFiles, _abc
+from ._utils import CheckAttrs, Timer, guess_seqtype, is_gzip_file
 
 __all__ = ["MFA2Tree", "MFA2TreeList"]
+logger = logging.getLogger(__name__)
 _R = TypeVar("Return")
 _C = TypeVar("Callable", bound=Callable[..., _R])
 
@@ -93,7 +92,7 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
     Optionally take a partition file to build tree with partition mode with RAxML-NG and IQ-TREE.
     """
 
-    __slots__ = ("_method", "_tree", "_toverr", "_saturation")
+    __slots__ = ("_logger", "_method", "_tree", "_toverr", "_saturation")
 
     @overload
     def __init__(self, file: str | Path, *, seqtype: Literal["dna", "pep", "AUTO"] = "AUTO") -> None: ...
@@ -124,6 +123,7 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
             >>> MFA2Tree("data/101133at4751.cds.mfa", "msa_101133at4751")
         """
         super().__init__(file, name, seqtype=seqtype)
+        self._logger: logging.Logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self._method: str = None
         self._tree: Tree = None
         self._toverr: float = None
@@ -350,10 +350,10 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
                     threads=threads,
                     threads_max=threads_max,
                 )
-                logger.info("Find the best-fit model...")
+                self._logger.info("Find the best-fit model...")
                 modelfinder.run()
                 model = modelfinder.result
-                logger.info(f"Best-fit model: {model}")
+                self._logger.info(f"Best-fit model: {model}")
             elif Path(model).is_file():
                 # Partitioning analysis
                 if method == TreeMethods.FT.name:
@@ -393,13 +393,13 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
             else:
                 raise NotImplementedError(f"Method not implemented yet: {TreeMethods[method].name}.")
 
-            logger.info(f"Build tree by {runner._prog}...")
+            self._logger.info(f"Build tree by {runner._prog}...")
             runner.run()
             self._method = method
             self._tree = Phylo.read(runner.result, "newick")
 
             if bs > 0:
-                logger.info("Bootstrapping...")
+                self._logger.info("Bootstrapping...")
                 tree_file = bootstrap(
                     self,
                     runner.result,
@@ -413,7 +413,7 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
                 self._tree = Phylo.read(tree_file, "newick")
 
             if scfl > 0:
-                logger.info("Calculating site concordance factor...")
+                self._logger.info("Calculating site concordance factor...")
                 tree_file = branch_concordance(
                     self,
                     tree_file,
@@ -429,7 +429,7 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
         finally:
             if tempdir:
                 tempdir.cleanup()
-        logger.info("Tree building on %s is done.", self.name)
+        self._logger.info("Tree building on %s is done.", self.name)
 
         if tempdir:
             return self.tree
@@ -594,32 +594,27 @@ class MFA2TreeList(_abc.SeqDataListABC[MFA2Tree]):
             jobs (int, optional): Number of parallel processes. Defaults to maximum available CPUs.
             threads (int, optional): Number of threads per process. Defaults to 1.
         """
-        with Manager() as manager:
-            counter = manager.Value("i", 0)
-            condition = manager.Condition()
-
-            progress = progress_daemon(len(self), counter, condition, step=min(max(10, len(self) // 200 * 50), 500))
-            progress.start()
-
-            params_per_task = [
-                (mfa2tree, method, None, model, noml, bs, scfl, seed, threads, counter, condition) for mfa2tree in self
-            ]
-            try:
-                if logger.parent.getEffectiveLevel() > 10:
-                    logger.setLevel("WARNING")
-                if len(self) == 1 or jobs <= 1:
-                    logger.debug("Sequential mode with %s threads.", threads)
-                    for params in params_per_task:
-                        _build_helper(*params)
-                else:
-                    logger.debug("Multiprocesses mode with %s jobs and %s threads for each.", jobs, threads)
-                    with ThreadPool(jobs) as pool:
-                        pool.starmap(_build_helper, params_per_task)
-            except Exception:
-                logger.error("%s", traceback.format_exc())
-                raise
-            finally:
-                logger.setLevel(logger.parent.getEffectiveLevel())
+        step_size = min(max(10, len(self) // 200 * 50), 500)
+        total = len(self)
+        params_per_task = [(mfa2tree, method, None, model, noml, bs, scfl, seed, threads) for mfa2tree in self]
+        try:
+            if len(self) == 1 or jobs <= 1:
+                logger.debug("Sequential mode with %s threads.", threads)
+                for i, params in enumerate(params_per_task, 1):
+                    _build_helper(*params)
+                    if i % step_size == 0 or i == total:
+                        logger.info("Progress: %d / %d", i, total)
+            else:
+                logger.debug("Multiprocesses mode with %s jobs and %s threads for each.", jobs, threads)
+                with ThreadPool(jobs) as pool:
+                    async_tasks = [pool.apply_async(_build_helper, p) for p in params_per_task]
+                    for i, r in enumerate(async_tasks, 1):
+                        r.get()
+                        if i % step_size == 0 or i == total:
+                            logger.info("Progress: %d / %d", i, total)
+        except Exception:
+            logger.error("%s", traceback.format_exc())
+            raise
 
     @Timer.timer
     def compute_toverr(self, *, threads: int = 1) -> None:
@@ -988,8 +983,6 @@ def _build_helper(
     scfl: int = 0,
     seed: int = -1,
     threads: int = 1,
-    counter: Synchronized | None = None,
-    condition: Condition | None = None,
 ) -> Tree:
     """Helper function to run the `build` method on an MFA2Tree instance.
 
@@ -1012,12 +1005,13 @@ def _build_helper(
     Returns:
         Tree: The resulting phylogenetic tree.
     """
-    instance.build(method, output, model, noml=noml, bs=bs, scfl=scfl, seed=seed, threads_max=threads)
-
-    if counter and condition:
-        with condition:
-            counter.value += 1
-            condition.notify()
+    mfa2tree_logger = logging.getLogger("phyling.lib.tree.MFA2Tree")
+    original_level = mfa2tree_logger.level
+    mfa2tree_logger.setLevel(logging.WARNING)
+    try:
+        instance.build(method, output, model, noml=noml, bs=bs, scfl=scfl, seed=seed, threads_max=threads)
+    finally:
+        mfa2tree_logger.setLevel(original_level)
 
 
 def _fill_missing_taxon(samples: Sequence[str], msa: MultipleSeqAlignment) -> MultipleSeqAlignment:

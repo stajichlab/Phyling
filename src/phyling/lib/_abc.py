@@ -108,7 +108,7 @@ def load_data(func: _C) -> _C:
     @wraps(func)
     def wrapper(instance: _FW | _DL, *args, **kwargs):
         """Validate the data is loaded before executing the function and unload it afterward if it was not loaded initially."""
-        was_loaded = bool(instance._data)
+        was_loaded = instance._data is not None
         if not was_loaded:
             instance.load()
         try:

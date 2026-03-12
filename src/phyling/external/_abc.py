@@ -9,12 +9,10 @@ from functools import wraps
 from pathlib import Path
 from typing import Any, Callable, Literal, TypeVar
 
-from ..libphyling import SeqTypes
-from ..libphyling._utils import CheckAttrs
+from ..lib import SeqTypes
+from ..lib._utils import CheckAttrs
 
 _C = TypeVar("Callable", bound=Callable[..., Any])
-
-logger = logging.getLogger(f"{SeqTypes.__module__}.{__package__.split('.')[-1]}")
 
 
 def _check_attributes(*attrs: str):
@@ -48,7 +46,7 @@ def _check_attributes(*attrs: str):
 class BinaryWrapper(ABC):
     _prog: str
     _cmd_log: Literal["stdout", "stderr"] = "stdout"
-    __slots__ = ("_output", "_cmd", "_result", "done")
+    __slots__ = ("_logger", "_output", "_cmd", "_result", "done")
 
     def __init__(self, file: str | Path, output: str | Path | None = None, *args, **kwargs) -> None:
         file = Path(file)
@@ -61,14 +59,18 @@ class BinaryWrapper(ABC):
         self._cmd: list[str]
         self.done = False
 
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        cls._logger = logging.getLogger(f"{cls.__module__}.{cls.__name__}")
+
     def run(self) -> None:
         """Execute the command."""
         if self._output:
             Path(self._output).parent.mkdir(parents=True, exist_ok=True)
-        logger.info(self.cmd)
+        self._logger.debug(self.cmd)
         try:
             result = subprocess.run(self._cmd, capture_output=True, check=True, text=True)
-            logger.debug("%s", getattr(result, self._cmd_log))
+            self._logger.debug("%s", getattr(result, self._cmd_log))
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"{self._prog} failed with cmd: {self.cmd}\n{e.stderr}")
         if self._output:

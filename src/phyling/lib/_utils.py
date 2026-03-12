@@ -5,13 +5,11 @@ These are not part of the public API and may change without notice.
 
 from __future__ import annotations
 
+import logging
 import re
 import shutil
-import threading
 import time
 from functools import wraps
-from multiprocessing.managers import ValueProxy
-from multiprocessing.synchronize import Condition
 from pathlib import Path
 from typing import Any, Callable, TypeVar
 from zlib import crc32
@@ -21,11 +19,12 @@ from Bio.Align import MultipleSeqAlignment
 from Bio.Data.CodonTable import NCBICodonTable, NCBICodonTableDNA, NCBICodonTableRNA
 from Bio.Seq import Seq
 
-from .. import AVAIL_CPUS, logger
+from .. import AVAIL_CPUS
 from ..exception import BinaryNotFoundError, SeqtypeError
 from . import SeqTypes
 
 _C = TypeVar("Callable", bound=Callable[..., Any])
+logger = logging.getLogger(__name__)
 
 
 def get_file_checksum(file: str | Path) -> int:
@@ -118,26 +117,6 @@ def remove_dirs(*dirs: Path) -> None:
     if dirs:
         for dir in dirs:
             shutil.rmtree(dir)
-
-
-def progress_daemon(total: int, counter: ValueProxy, condition: Condition, *, step: int = 10):
-    step = step if step > 0 else 1
-
-    def reporter():
-        try:
-            if total != 0:
-                while True:
-                    with condition:
-                        condition.wait()
-                        done = counter.value
-                        if done % step == 0 or done == total:
-                            logger.info("Progress: %d / %d", done, total)
-                        if done >= total:
-                            break
-        except Exception as e:
-            logger.error("Exception in progress reporter: %s", e)
-
-    return threading.Thread(target=reporter, daemon=True)
 
 
 def check_threads(func: _C) -> _C:
