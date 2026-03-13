@@ -98,10 +98,20 @@ jobs:
       - name: Add local bin to PATH
         run: echo "$HOME/.local/bin" >> $GITHUB_PATH
 
+      - name: Detect Package Name
+        id: detect
+        run: |
+          echo "PKG_NAME=$(basename $(find src -maxdepth 1 -type d | head -n 2 | tail -n 1))" >> $GITHUB_ENV
+
       - name: Test with pytest
         run: |
-          package_name=$(grep '^name = ' pyproject.toml | sed 's/name = "\(.*\)"/\1/' | tr -d '[:space:]')
-          pytest -vv --cov=$package_name --cov-config=.coveragerc --cov-report=xml --runslow
+          export PYTHONPATH=$PYTHONPATH:$(pwd)/src
+
+          pytest -vv \
+            --cov=${{ env.PKG_NAME }} \
+            --cov-report=xml \
+            --cov-config=pyproject.toml \
+            --runslow
 
       - name: Upload coverage.xml artifact
         uses: actions/upload-artifact@v6
