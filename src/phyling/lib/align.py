@@ -9,7 +9,6 @@ import tempfile
 import traceback
 from functools import partial
 from multiprocessing import Pool
-from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from typing import Any, Iterator, Literal, NamedTuple, Sequence, overload
 
@@ -399,16 +398,18 @@ class SampleList(_abc.SeqDataListABC[SampleSeqs]):
             if jobs <= 1:
                 logger.debug("Sequential mode with %s threads.", threads)
                 for i, sample in enumerate(self, 1):
-                    res = _search_helper(sample, hmms, evalue, threads)
+                    _init_worker(hmms)
+                    res = _search_helper(sample, evalue, threads)
                     search_res.append(res)
                     if i % step_size == 0 or i == total:
                         logger.info("Progress: %d / %d", i, total)
             else:
                 logger.debug("Multiprocesses mode with %s jobs and %s threads for each.", jobs, threads)
-                with ThreadPool(jobs) as pool:
-                    async_tasks = [pool.apply_async(_search_helper, (sample, hmms, evalue, threads)) for sample in self]
-                    for i, t in enumerate(async_tasks, 1):
-                        search_res.append(t.get())
+                with Pool(processes=jobs, initializer=_init_worker, initargs=(hmms,)) as pool:
+                    func = partial(_search_helper, evalue=evalue, threads=threads)
+                    results = pool.imap(func, self)
+                    for i, r in enumerate(results, 1):
+                        search_res.append(r)
                         if i % step_size == 0 or i == total:
                             logger.info("Progress: %d / %d", i, total)
         except ValueError:
@@ -926,8 +927,8 @@ class OrthologList(_abc.SeqDataListABC[OrthologSeqs]):
             if jobs <= 1:
                 logger.debug("Sequential mode with %s threads.", threads)
                 for i, (sample, method, threads) in enumerate(params_gen, 1):
-                    hmms_ = hmms[sample.name] if hmms else None
-                    msa.append(_align_helper(sample, method, hmms_, threads))
+                    _init_worker(hmms)
+                    msa.append(_align_helper(sample, method, threads))
                     if i % step_size == 0 or i == total:
                         logger.info("Progress: %d / %d", i, total)
             else:
@@ -1117,7 +1118,6 @@ def _init_worker(hmms):
 
 def _search_helper(
     instance: SampleSeqs,
-    hmms: HMMMarkerSet,
     evalue: float = 1e-10,
     threads: int = 1,
 ) -> list[SearchHit]:
@@ -1132,7 +1132,8 @@ def _search_helper(
     Returns:
         list[SearchHit]: A list of search hits, each representing the best match for a marker.
     """
-    r = instance.search(hmms=hmms, evalue=evalue, threads=threads)
+    global _shared_hmms
+    r = instance.search(hmms=_shared_hmms, evalue=evalue, threads=threads)
     return r
 
 
