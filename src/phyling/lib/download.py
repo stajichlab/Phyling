@@ -127,7 +127,7 @@ class BuscoParser(ContextDecorator):
         Path(fp.name).unlink()
 
 
-def _fetch_url(url: str) -> bytes:
+def _fetch_url(url: str, timeout: int = 30) -> bytes:
     """
     Fetch URL data content.
 
@@ -139,10 +139,9 @@ def _fetch_url(url: str) -> bytes:
     """
     try:
         logger.debug("Download from %s ...", url)
-        with urlopen(url) as response:
-            content = response.read()
+        with urlopen(url, timeout=timeout) as response:
+            return response.read()
     except HTTPError as e:
-        raise HTTPError("URL currently unavailable.") from e
+        raise HTTPError(url, e.code, f"Server returned error: {e.reason}", e.hdrs, None) from e
     except URLError as e:
-        raise URLError("URL not found or no internet connection available.") from e
-    return content
+        raise URLError(f"Connection failed to {url}: {e.reason}") from e
