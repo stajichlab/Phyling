@@ -25,29 +25,23 @@ class BuscoParser(ContextDecorator):
         self._local_metadata: dict[str, dict] = {}
         self._get_metadata_online()
         self._get_local_metadata()
-        user_metadata = self._get_user_metadata()
-        self._user_metadata_hash = hash(frozenset([(x, y["md5"]) for x, y in user_metadata.items()]))
-        logger.debug(f"Original metadata hash: {self._user_metadata_hash}")
+        self._initial_hash = self._generate_metadata_hash()
+        logger.debug("Original metadata hash %s", self._initial_hash)
 
     def __enter__(self) -> BuscoParser:
         """Define the actions that will run when the object is created with `with` statement."""
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
+    def __exit__(self, exc_type, exc_value, traceback) -> bool:
         """Define the actions that will run when the object is going to be destroyed by the end of the `with` statement."""
-        logger.debug("Exiting context")
-        user_metadata = self._get_user_metadata()
-        user_metadata_hash = hash(frozenset([(x, y["md5"]) for x, y in user_metadata.items()]))
-        logger.debug(f"Current metadata hash: {user_metadata_hash}")
-        if user_metadata_hash != self._user_metadata_hash:
-            logger.debug(f"Write changes to {self._cfg_dirs[0] / METADATA_FILE}")
-            with open(self._cfg_dirs[0] / METADATA_FILE, "w") as f:
-                writer = csv.writer(f, delimiter="\t")
-                for name, info in user_metadata.items():
-                    writer.writerow([name, info["md5"]])
-        if exc_type:
-            return False
-        return True
+
+        current_hash = self._generate_metadata_hash()
+        logger.debug(f"Current metadata hash: {current_hash}")
+        if current_hash != self._initial_hash:
+            self._write_local_metadata()
+
+        # Returning False allows exceptions to propagate normally
+        return False
 
     @property
     def online(self) -> list[str]:
@@ -59,9 +53,11 @@ class BuscoParser(ContextDecorator):
         """Return a list of the markersets retrieve from local metadata."""
         local_markersets = []
         for markerset, info in self._local_metadata.items():
-            if info["md5"] != self._online_metadata[markerset]["md5"]:
-                markerset += " [Outdated]"
-            local_markersets.append(markerset)
+            display_name = markerset
+            if self._online_metadata and markerset in self._online_metadata:
+                if info["md5"] != self._online_metadata[markerset]["md5"]:
+                    display_name += " [Outdated]"
+            local_markersets.append(display_name)
         return sorted(local_markersets)
 
     def close(self) -> None:
@@ -69,62 +65,110 @@ class BuscoParser(ContextDecorator):
 
     def download(self, markerset: str) -> None:
         """Download the given markerset from busco database."""
-        if markerset in self._local_metadata:
-            if self._local_metadata[markerset]["md5"] == self._online_metadata[markerset]["md5"]:
-                logger.info("Markerset already exists and up to date.")
+        if markerset not in self._online_metadata:
+            raise KeyError(f"Markerset '{markerset}' not found in BUSCO database.")
+
+        online_info = self._online_metadata[markerset]
+        local_info = self._local_metadata.get(markerset)
+
+        if local_info:
+            if local_info["md5"] == online_info["md5"]:
+                logger.info("Markerset %s already exists and is up to date.", markerset)
                 return
-            logger.info("Local markerset outdated. Update from online database...")
+            # Explicitly log the outdated status
+            logger.info("Local markerset %s is outdated. Updating from online database...", markerset)
         else:
-            logger.debug("Markerset not found. Download from online database...")
-        data = _fetch_url(self._online_metadata[markerset]["url"])
+            logger.debug("Markerset %s not found locally. Downloading...", markerset)
+
+        data = _fetch_url(online_info["url"])
+
         md5 = hashlib.md5(data).hexdigest()
-        if md5 != self._online_metadata[markerset]["md5"]:
-            raise HTTPError("The checksum of the downloaded contents do not match to the metadata.")
-        self._save_markerset(data, markerset=markerset)
+        if md5 != online_info["md5"]:
+            raise ValueError(f"MD5 mismatch for {markerset}. Expected {online_info['md5']}, got {md5}")
+
+        self._save_markerset(data, markerset)
         self._local_metadata[markerset] = {"path": self._cfg_dirs[0], "md5": md5}
 
     def _get_metadata_online(self):
         """Get the metadata from busco url."""
-        data = _fetch_url(f"{BUSCO_URL}/file_versions.tsv")
-        for line in data.decode().split("\n"):
-            line = line.split("\t")
-            if line[-1] == "lineages":
-                self._online_metadata[line[0]] = {
-                    "url": f"{BUSCO_URL}/lineages/{line[0]}.{line[1]}.tar.gz",
-                    "md5": line[2],
-                }
+        try:
+            data = _fetch_url(f"{BUSCO_URL}/file_versions.tsv")
+            for line in data.decode().splitlines():
+                parts = line.split("\t")
+                if parts[-1] == "lineages":
+                    self._online_metadata[parts[0]] = {
+                        "url": f"{BUSCO_URL}/lineages/{parts[0]}.{parts[1]}.tar.gz",
+                        "md5": parts[2],
+                    }
+        except Exception as e:
+            logger.error("Could not retrieve online metadata: %s", e)
 
     def _get_local_metadata(self):
         """Get the metadata from local file."""
         for cfg_dir in self._cfg_dirs[::-1]:  # Ensure the local metadata overwrite the global when overlapped
             metadata_file = cfg_dir / METADATA_FILE
-            if metadata_file.is_file():
-                with open(metadata_file) as f:
-                    for line in csv.reader(f, delimiter="\t"):
-                        if line[0].startswith("#"):
-                            continue
-                        if not (cfg_dir / line[0]).is_dir():
-                            continue
+            if not metadata_file.is_file():
+                continue
+            with open(metadata_file) as f:
+                for line in csv.reader(f, delimiter="\t"):
+                    if line[0].startswith("#"):
+                        continue
+                    if (cfg_dir / line[0]).is_dir():
                         self._local_metadata[line[0]] = {"path": cfg_dir, "md5": line[1]}
-            else:
-                logger.debug("Local metadata not found. Please download from the online database.")
+
+    def _write_local_metadata(self) -> None:
+        """Atomically write metadata to the primary config directory."""
+        dest = self._cfg_dirs[0] / METADATA_FILE
+        dest.parent.mkdir(parents=True, exist_ok=True)
+
+        logger.debug("Writing changes to %s", dest)
+        # Write to temp file first then rename to prevent corruption on crash
+        with tempfile.NamedTemporaryFile("w", dir=dest.parent, delete=False) as f:
+            writer = csv.writer(f, delimiter="\t")
+            for name, info in self._get_user_metadata().items():
+                writer.writerow([name, info["md5"]])
+        Path(f.name).replace(dest)
 
     def _get_user_metadata(self):
-        return {k: v for k, v in self._local_metadata.items() if v["path"] == self._cfg_dirs[0]} if self._local_metadata else {}
+        return {k: v for k, v in self._local_metadata.items() if v["path"] == self._cfg_dirs[0]}
+
+    def _generate_metadata_hash(self) -> int:
+        """Generate a hash of the current local metadata for change detection."""
+        user_data = self._get_user_metadata()
+        # Sort keys to ensure deterministic hashing
+        state = tuple(sorted((k, v["md5"]) for k, v in user_data.items()))
+        return hash(state)
 
     def _save_markerset(self, data: bytes, markerset: str) -> None:
         """Save the content of the markerset to a local folder."""
-        output = self._cfg_dirs[0] / markerset
-        if output.is_dir():
-            shutil.rmtree(output)
-        output.mkdir(parents=True)
-        with tempfile.NamedTemporaryFile("wb", delete=False) as fp:
-            fp.write(data)
-            fp.close()
-            logger.debug("Extract files to %s.", {output})
-            with tarfile.open(fp.name, "r:gz") as f:
-                f.extractall(output.parent, filter="data")
-        Path(fp.name).unlink()
+        output_dir = self._cfg_dirs[0] / markerset
+
+        # 1. Use a temporary directory for safe extraction
+        with tempfile.TemporaryDirectory(dir=self._cfg_dirs[0]) as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            tar_path = tmp_path / "data.tar.gz"
+            tar_path.write_bytes(data)
+
+            with tarfile.open(tar_path, "r:gz") as f:
+                # Python 3.12+ Security: 'data' filter prevents path traversal
+                if hasattr(tarfile, "data_filter"):
+                    f.extractall(tmp_path, filter="data")
+                else:
+                    # Python 3.9 - 3.11 behavior
+                    f.extractall(tmp_path)
+
+            # 2. Cleanup existing and move new content into place
+            if output_dir.exists():
+                shutil.rmtree(output_dir)
+
+            # 3. Find the extracted folder
+            # BUSCO tarballs usually contain a single top-level folder
+            extracted_folders = [p for p in tmp_path.iterdir() if p.is_dir()]
+            if extracted_folders:
+                # Move the first directory found to the final destination
+                shutil.move(str(extracted_folders[0]), str(output_dir))
+            else:
+                raise RuntimeError(f"Failed to find extracted folder for {markerset}")
 
 
 def _fetch_url(url: str, timeout: int = 30) -> bytes:
