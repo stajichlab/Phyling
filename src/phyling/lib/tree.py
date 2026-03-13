@@ -6,8 +6,7 @@ import gzip
 import logging
 import tempfile
 import traceback
-from functools import wraps
-from itertools import product
+from functools import partial, wraps
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from typing import Callable, Literal, Sequence, TypeVar, overload
@@ -594,22 +593,32 @@ class MFA2TreeList(_abc.SeqDataListABC[MFA2Tree]):
             jobs (int, optional): Number of parallel processes. Defaults to maximum available CPUs.
             threads (int, optional): Number of threads per process. Defaults to 1.
         """
+        func = partial(
+            _build_helper,
+            method=method,
+            output=None,
+            model=model,
+            noml=noml,
+            bs=bs,
+            scfl=scfl,
+            seed=seed,
+            threads=threads,
+        )
+
         step_size = min(max(10, len(self) // 200 * 50), 500)
         total = len(self)
-        params_per_task = [(mfa2tree, method, None, model, noml, bs, scfl, seed, threads) for mfa2tree in self]
         try:
             if len(self) == 1 or jobs <= 1:
                 logger.debug("Sequential mode with %s threads.", threads)
-                for i, params in enumerate(params_per_task, 1):
-                    _build_helper(*params)
+                results = map(func, self)
+                for i, _ in enumerate(results, 1):
                     if i % step_size == 0 or i == total:
                         logger.info("Progress: %d / %d", i, total)
             else:
                 logger.debug("Multiprocesses mode with %s jobs and %s threads for each.", jobs, threads)
                 with ThreadPool(jobs) as pool:
-                    async_tasks = [pool.apply_async(_build_helper, p) for p in params_per_task]
-                    for i, r in enumerate(async_tasks, 1):
-                        r.get()
+                    results = pool.imap(func, self)
+                    for i, _ in enumerate(results, 1):
                         if i % step_size == 0 or i == total:
                             logger.info("Progress: %d / %d", i, total)
         except Exception:
@@ -726,53 +735,49 @@ class MFA2TreeList(_abc.SeqDataListABC[MFA2Tree]):
                 output = Path(output)
             else:
                 raise TypeError("Argument output only accepts str or Path.")
-            mfa2treelist = sorted(self, key=lambda msa: len(msa), reverse=True)
+            mfa2treelist = sorted(self, key=len, reverse=True)
 
-            # Get sample names and create an empty MSA holder
-            concat_alignments = MultipleSeqAlignment([])
-            samples = set()
-            msa_list = []
-            for msa in mfa2treelist:
-                msa_list.append(msa._data)
-                for rec in msa._data:
-                    samples.add(rec.id)
-            samples = tuple(samples)
-            for sample in samples:
-                concat_alignments.append(SeqRecord(Seq(""), id=sample, description=""))
-            concat_alignments.sort()
+            # Get sample names and load all msa to a list
+            samples = sorted({rec.id for mfa in mfa2treelist for rec in mfa._data})
+            msa_list = [mfa._data for mfa in mfa2treelist]
         finally:
             self.unload()
 
         # Fill missing taxon on some of the MSAs
         logger.info("Filling missing taxon...")
+        func = partial(_fill_missing_taxon, samples)
         if threads > 1:
             with ThreadPool(threads) as pool:
-                msa_list = pool.starmap(_fill_missing_taxon, product([samples], msa_list))
+                msa_list = list(pool.imap(func, msa_list))
         else:
-            msa_list = [_fill_missing_taxon(samples, msa) for msa in msa_list]
+            msa_list = [func(msa) for msa in msa_list]
         logger.info("Done.")
 
         # Concatenate
         logger.info("Concatenating selected MSAs...")
 
-        start_idx = 0
         partition_info = Partitions("raxml")
         model = "GTR" if self.seqtype == SeqTypes.DNA else "LG"
+        concat_map = {sid: [] for sid in samples}
+        start_idx = 1
         for msa in msa_list:
-            concat_alignments += msa
-            end_idx = start_idx + msa.get_alignment_length()
+            m_len = msa.get_alignment_length()
+            for rec in msa:
+                concat_map[rec.id].append(str(rec.seq))
+
             partition_info.add(
                 PartitionRecord(
                     name=msa.annotations["seqname"],
-                    start=start_idx + 1,
-                    end=end_idx,
+                    start=start_idx,
+                    end=start_idx + m_len - 1,
                     model=model,
                 )
             )
-            start_idx = end_idx
+            start_idx += m_len
 
-        for seq in concat_alignments:
-            seq.description = ""
+        concat_alignments = MultipleSeqAlignment(
+            [SeqRecord(Seq("".join(seqs)), id=sid, description="") for sid, seqs in concat_map.items()]
+        )
         logger.info("Done.")
 
         output.mkdir(exist_ok=True)
@@ -1033,5 +1038,5 @@ def _fill_missing_taxon(samples: Sequence[str], msa: MultipleSeqAlignment) -> Mu
                 description="",
             )
         )
-        msa.sort()
+    msa.sort()
     return msa

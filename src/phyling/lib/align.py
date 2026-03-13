@@ -389,6 +389,8 @@ class SampleList(_abc.SeqDataListABC[SampleSeqs]):
         if not 0 < jobs <= len(self):
             raise RuntimeError(f"jobs = {jobs}: jobs should be between 1 and {len(self)}")
 
+        func = partial(_search_helper, evalue=evalue, threads=threads)
+
         step_size = min(max(1, len(self) // 200 * 10), 50)
         total = len(self)
         search_res = []
@@ -397,16 +399,15 @@ class SampleList(_abc.SeqDataListABC[SampleSeqs]):
             #     logger.setLevel("WARNING")
             if jobs <= 1:
                 logger.debug("Sequential mode with %s threads.", threads)
-                for i, sample in enumerate(self, 1):
-                    _init_worker(hmms)
-                    res = _search_helper(sample, evalue, threads)
-                    search_res.append(res)
+                _init_worker(hmms)
+                results = map(func, self)
+                for i, r in enumerate(results, 1):
+                    search_res.append(r)
                     if i % step_size == 0 or i == total:
                         logger.info("Progress: %d / %d", i, total)
             else:
                 logger.debug("Multiprocesses mode with %s jobs and %s threads for each.", jobs, threads)
                 with Pool(processes=jobs, initializer=_init_worker, initargs=(hmms,)) as pool:
-                    func = partial(_search_helper, evalue=evalue, threads=threads)
                     results = pool.imap(func, self)
                     for i, r in enumerate(results, 1):
                         search_res.append(r)
@@ -918,22 +919,23 @@ class OrthologList(_abc.SeqDataListABC[OrthologSeqs]):
         if not 0 < jobs <= len(self):
             raise RuntimeError(f"jobs = {jobs}: jobs should be between 1 and {len(self)}")
 
+        func = partial(_align_helper, method=method, threads=threads)
+
         step_size = min(max(10, len(self) // 200 * 50), 500)
         total = len(self)
         msa = []
-        params_gen = ((sample, method, threads) for sample in self)
 
         try:
             if jobs <= 1:
                 logger.debug("Sequential mode with %s threads.", threads)
-                for i, (sample, method, threads) in enumerate(params_gen, 1):
-                    _init_worker(hmms)
-                    msa.append(_align_helper(sample, method, threads))
+                _init_worker(hmms)
+                results = map(func, self)
+                for i, r in enumerate(results, 1):
+                    msa.append(r)
                     if i % step_size == 0 or i == total:
                         logger.info("Progress: %d / %d", i, total)
             else:
                 logger.debug("Multiprocesses mode with %s jobs and %s threads for each.", jobs, threads)
-                func = partial(_align_helper, method=method, threads=threads)
                 with Pool(processes=jobs, initializer=_init_worker, initargs=(hmms,)) as pool:
                     results = pool.imap(func, self)
                     for i, r in enumerate(results, 1):
