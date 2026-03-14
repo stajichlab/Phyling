@@ -114,7 +114,7 @@ jobs:
             --runslow
 
       - name: Upload coverage.xml artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report-${{ matrix.python }}
           path: coverage.xml
