@@ -23,6 +23,9 @@ identifiers:
   - type: doi
     value: 10.1101/2025.07.30.666921
     description: bioRxiv preprint
+  - type: doi
+    value: 10.1093/g3journal/jkag062
+    description: Tsai CH, Stajich JE, 2026. G3 publication    
 repository-code: 'https://github.com/stajichlab/Phyling'
 url: 'https://lab.stajich.org/projects/'
 abstract: >
@@ -61,8 +64,8 @@ preferred-citation:
     email: jason.stajich@ucr.edu
     affiliation: University of California-Riverside
     orcid: 'https://orcid.org/0000-0002-7591-0020'
-  doi: 10.1101/2025.07.30.666921
-  journal: bioRxiv
-  month: 7
+  doi: 10.1093/g3journal/jkag062 
+  journal: G3
+  month: 5
   title: 'Phyling: phylogenetic inference from annotated genomes'
-  year: 2025
+  year: 2026
