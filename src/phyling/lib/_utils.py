@@ -439,10 +439,10 @@ def substitute_ambiguous_seq(seq: Seq) -> Seq:
     Returns:
         Seq: The modified sequence with ambiguous characters replaced and converted to uppercase.
     """
-    return Seq(re.sub(r"[ZzBbXx\*\.]", "-", str(seq.seq))).upper()
+    return Seq(re.sub(r"[ZzBbXx\*\.]", "-", str(seq))).upper()
 
 
-def load_msa(file: str | Path) -> MultipleSeqAlignment:
+def load_msa(file: Path) -> MultipleSeqAlignment:
     """Load a multiple sequence alignment (MSA) from a file in FASTA format.
 
     This function reads the MSA saved in FASTA format, processes each sequence to substitute ambiguous characters, and returns the
@@ -462,5 +462,5 @@ def load_msa(file: str | Path) -> MultipleSeqAlignment:
     except ValueError as e:
         raise ValueError(f"{file.absolute()}: {e}")
     for seq in alignment:
-        seq.seq = substitute_ambiguous_seq(seq)
+        seq.seq = substitute_ambiguous_seq(seq.seq)
     return alignment
