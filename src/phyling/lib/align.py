@@ -8,7 +8,7 @@ import logging
 import tempfile
 import traceback
 from functools import partial
-from multiprocessing import Pool
+from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from typing import Any, Iterator, Literal, NamedTuple, Sequence, overload
 
@@ -389,7 +389,7 @@ class SampleList(_abc.SeqDataListABC[SampleSeqs]):
         if not 0 < jobs <= len(self):
             raise RuntimeError(f"jobs = {jobs}: jobs should be between 1 and {len(self)}")
 
-        func = partial(_search_helper, evalue=evalue, threads=threads)
+        func = partial(_search_helper, hmms=hmms, evalue=evalue, threads=threads)
 
         step_size = min(max(1, len(self) // 200 * 10), 50)
         total = len(self)
@@ -399,7 +399,6 @@ class SampleList(_abc.SeqDataListABC[SampleSeqs]):
             #     logger.setLevel("WARNING")
             if jobs <= 1:
                 logger.debug("Sequential mode with %s threads.", threads)
-                _init_worker(hmms)
                 results = map(func, self)
                 for i, r in enumerate(results, 1):
                     search_res.append(r)
@@ -407,7 +406,7 @@ class SampleList(_abc.SeqDataListABC[SampleSeqs]):
                         logger.info("Progress: %d / %d", i, total)
             else:
                 logger.debug("Multiprocesses mode with %s jobs and %s threads for each.", jobs, threads)
-                with Pool(processes=jobs, initializer=_init_worker, initargs=(hmms,)) as pool:
+                with ThreadPool(processes=jobs) as pool:
                     results = pool.imap(func, self)
                     for i, r in enumerate(results, 1):
                         search_res.append(r)
@@ -919,7 +918,7 @@ class OrthologList(_abc.SeqDataListABC[OrthologSeqs]):
         if not 0 < jobs <= len(self):
             raise RuntimeError(f"jobs = {jobs}: jobs should be between 1 and {len(self)}")
 
-        func = partial(_align_helper, method=method, threads=threads)
+        func = partial(_align_helper, hmms=hmms, method=method, threads=threads)
 
         step_size = min(max(10, len(self) // 200 * 50), 500)
         total = len(self)
@@ -928,7 +927,6 @@ class OrthologList(_abc.SeqDataListABC[OrthologSeqs]):
         try:
             if jobs <= 1:
                 logger.debug("Sequential mode with %s threads.", threads)
-                _init_worker(hmms)
                 results = map(func, self)
                 for i, r in enumerate(results, 1):
                     msa.append(r)
@@ -936,7 +934,7 @@ class OrthologList(_abc.SeqDataListABC[OrthologSeqs]):
                         logger.info("Progress: %d / %d", i, total)
             else:
                 logger.debug("Multiprocesses mode with %s jobs and %s threads for each.", jobs, threads)
-                with Pool(processes=jobs, initializer=_init_worker, initargs=(hmms,)) as pool:
+                with ThreadPool(processes=jobs) as pool:
                     results = pool.imap(func, self)
                     for i, r in enumerate(results, 1):
                         msa.append(r)
@@ -1120,6 +1118,7 @@ def _init_worker(hmms):
 
 def _search_helper(
     instance: SampleSeqs,
+    hmms: HMMMarkerSet,
     evalue: float = 1e-10,
     threads: int = 1,
 ) -> list[SearchHit]:
@@ -1134,16 +1133,16 @@ def _search_helper(
     Returns:
         list[SearchHit]: A list of search hits, each representing the best match for a marker.
     """
-    global _shared_hmms
-    r = instance.search(hmms=_shared_hmms, evalue=evalue, threads=threads)
+    r = instance.search(hmms=hmms, evalue=evalue, threads=threads)
     return r
 
 
 def _align_helper(
     instance: OrthologSeqs,
-    method: str,
+    hmms: HMMMarkerSet,
+    method: Literal["hmmalign", "muscle"],
     threads: int = 1,
-):
+) -> MultipleSeqAlignment:
     """Helper function to perform alignment using a specified method.
 
     Args:
@@ -1154,10 +1153,8 @@ def _align_helper(
     Returns:
         MultipleSeqAlignment: Resulting alignment.
     """
-    global _shared_hmms
-    hmm = _shared_hmms[instance.name] if _shared_hmms else None
     if method == "hmmalign":
-        r = instance.align(method=method, hmm=hmm)
+        r = instance.align(method=method, hmm=hmms[instance.name])
     else:
         r = instance.align(method=method, threads=threads)
     return r
