@@ -7,15 +7,25 @@ import subprocess
 from abc import ABC, abstractmethod
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, Literal, TypeVar
+from typing import Callable, Literal, TypeVar
+
+try:
+    # Try the modern location first
+    from typing import Concatenate, ParamSpec
+except ImportError:
+    # Fallback to the extension library
+    from typing_extensions import Concatenate, ParamSpec
+
 
 from ..lib import SeqTypes
 from ..lib._utils import CheckAttrs
 
-_C = TypeVar("Callable", bound=Callable[..., Any])
+_T = TypeVar("_T")
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
 
 
-def _check_attributes(*attrs: str):
+def _check_attributes(*attrs: str) -> Callable[[Callable[Concatenate[_T, _P], _R]], Callable[Concatenate[_T, _P], _R]]:
     """Decorator to ensure specific attributes are initialized before executing the function.
 
     Args:
@@ -29,9 +39,9 @@ def _check_attributes(*attrs: str):
     if invalid_attrs:
         raise AttributeError(f"Invalid attribute names: {invalid_attrs}")
 
-    def decorator(func: _C) -> _C:
+    def decorator(func: Callable[Concatenate[_T, _P], _R]) -> Callable[Concatenate[_T, _P], _R]:
         @wraps(func)
-        def wrapper(instance, *args, **kwargs):
+        def wrapper(instance: _T, *args: _P.args, **kwargs: _P.kwargs) -> _R:
             """Validate variable inequality and execute the wrapped function."""
             false_attrs = CheckAttrs.is_false(instance, *attrs)
             for var in sorted(false_attrs, key=lambda x: list(var_mapping.keys()).index(x)):
@@ -52,10 +62,9 @@ class BinaryWrapper(ABC):
         file = Path(file)
         if not file.exists():
             raise FileNotFoundError(f"{file}")
-        if output:
-            self._output = output
+        self._output = Path(output) if output else None
         args, kwargs = self._params_check(*args, **kwargs)
-        self._construct_cmd(file, output, *args, **kwargs)
+        self._construct_cmd(file, self._output, *args, **kwargs)
         self._cmd: list[str]
         self.done = False
 
@@ -66,17 +75,15 @@ class BinaryWrapper(ABC):
     def run(self) -> None:
         """Execute the command."""
         if self._output:
-            Path(self._output).parent.mkdir(parents=True, exist_ok=True)
+            self._output.parent.mkdir(parents=True, exist_ok=True)
         self._logger.debug(self.cmd)
         try:
             result = subprocess.run(self._cmd, capture_output=True, check=True, text=True)
             self._logger.debug("%s", getattr(result, self._cmd_log))
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"{self._prog} failed with cmd: {self.cmd}\n{e.stderr}")
-        if self._output:
-            self._result = self._output
-        else:
-            self._result = result.stdout
+
+        self._result = self._output if self._output else result.stdout
         self._post_run()
         self.done = True
 
@@ -93,7 +100,7 @@ class BinaryWrapper(ABC):
         return args, kwargs
 
     @abstractmethod
-    def _construct_cmd(self, file: Path, output: Path, *args, **kwargs) -> None: ...
+    def _construct_cmd(self, file: Path, output: Path | None, *args, **kwargs) -> None: ...
 
     def _post_run(self):
         pass
@@ -125,7 +132,7 @@ class TreeToolWrapper(BinaryWrapper):
         elif seqtype == SeqTypes.PEP:
             seqtype = "AA"
         else:
-            seqtype = None
+            seqtype = "AUTO"
         return super()._params_check(*args, seqtype=seqtype, **kwargs)
 
     @abstractmethod

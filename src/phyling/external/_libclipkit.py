@@ -10,7 +10,7 @@ from clipkit.msa import MSA
 from phyling.lib import SeqTypes
 
 
-def trim_gaps(msa: MultipleSeqAlignment, gaps: int = 0.9) -> MultipleSeqAlignment:
+def trim_gaps(msa: MultipleSeqAlignment, gaps: float = 0.9) -> MultipleSeqAlignment:
     """Trim columns from an MSA based on gappyness ratio.
 
     Args:

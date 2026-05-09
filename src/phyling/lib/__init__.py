@@ -2,19 +2,20 @@
 
 import logging
 from enum import Enum
+from typing import Final
 
 logger = logging.getLogger(__name__)
 
 
 # General
 class SeqTypes:
-    DNA = "dna"
-    PEP = "pep"
-    RNA = "rna"
+    DNA: Final = "dna"
+    PEP: Final = "pep"
+    RNA: Final = "rna"
 
 
 class FileExts:
-    ALN = "mfa"  # general alignment extension
+    ALN: Final = "mfa"  # general alignment extension
     PEP_ALN = f"aa.{ALN}"  # protein alignment extension
     CDS_ALN = f"cds.{ALN}"  # cds alignment extension
 
@@ -24,7 +25,7 @@ BUSCO_URL = "https://busco-data.ezlab.org/v5/data"
 METADATA_FILE = ".metadata"
 
 # Align
-ALIGN_METHODS = ("hmmalign", "muscle")
+ALIGN_METHODS: Final = ("hmmalign", "muscle")
 
 
 # Tree

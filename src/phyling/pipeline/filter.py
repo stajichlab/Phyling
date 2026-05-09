@@ -1,85 +1,17 @@
-"""Filter the multiple sequence alignment (MSA) results for tree module.
-
-The align step usually reports a lot of markers but many of them are uninformative or susceptible to composition bias. The
-Treeness/RCV value computed by PhyKIT is used to estimate how informative the markers are. By default the -n/--top_n_toverr is
-set to 50 to select only the top 50 markers.
-"""
+"""Filter the multiple sequence alignment (MSA) results for tree module."""
 
 from __future__ import annotations
 
-import argparse
 import logging
-import time
 from pathlib import Path
 from typing import Literal
 
-from .. import AVAIL_CPUS
 from ..lib import FileExts, SeqTypes, TreeMethods
 from ..lib._utils import Timer, check_threads
 from ..lib.tree import MFA2TreeList, TreeOutputFiles
 from ._outputprecheck import FilterPrecheck
 
 logger = logging.getLogger(__name__)
-
-
-def menu(parser: argparse.ArgumentParser) -> None:
-    """Menu for filter module."""
-    req_args = parser.add_argument_group("Required arguments")
-    input_type = req_args.add_mutually_exclusive_group(required=True)
-    input_type.add_argument(
-        "-i",
-        "--inputs",
-        dest="inputs",
-        metavar=("file", "files"),
-        nargs="+",
-        type=Path,
-        help="Multiple sequence alignment fasta of the markers",
-    )
-    input_type.add_argument(
-        "-I",
-        "--input_dir",
-        dest="inputs",
-        metavar="directory",
-        type=Path,
-        help="Directory containing multiple sequence alignment fasta of the markers",
-    )
-    req_args.add_argument(
-        "-n",
-        "--top_n_toverr",
-        type=int,
-        required=True,
-        help="Select the top n markers based on their treeness/RCV for final tree building",
-    )
-    opt_args = parser.add_argument_group("Options")
-    opt_args.add_argument(
-        "-o",
-        "--output",
-        metavar="directory",
-        type=Path,
-        default="phyling-filter-%s" % time.strftime("%Y%m%d-%H%M%S", time.gmtime()),
-        help="Output directory of the treeness.tsv and selected MSAs (default: phyling-tree-[YYYYMMDD-HHMMSS] (UTC timestamp))",
-    )
-    opt_args.add_argument(
-        "--seqtype",
-        choices=["pep", "dna", "AUTO"],
-        default="AUTO",
-        help="Input data sequence type",
-    )
-    opt_args.add_argument(
-        "--ml",
-        action="store_true",
-        help="Use maximum-likelihood estimation during tree building",
-    )
-    opt_args.add_argument(
-        "-t",
-        "--threads",
-        type=int,
-        default=AVAIL_CPUS,
-        help="Threads for filtering",
-    )
-    opt_args.add_argument("-v", "--verbose", action="store_true", help="Verbose mode for debug")
-    opt_args.add_argument("-h", "--help", action="help", help="show this help message and exit")
-    parser.set_defaults(func=filter)
 
 
 @Timer.timer
@@ -96,19 +28,20 @@ def filter(
 ) -> None:
     """A pipeline that filter the multiple sequence alignment results through their treeness/RCVs."""
 
-    inputs = _input_check(inputs)
-    if not 1 < top_n_toverr < len(inputs):
-        if top_n_toverr == len(inputs):
+    inputs_ = _input_check(inputs)
+    output = Path(output)
+    if not 1 < top_n_toverr < len(inputs_):
+        if top_n_toverr == len(inputs_):
             raise SystemExit("Argument top_n_toverr is equal to the number of inputs. Do not need filtering.")
-        elif len(inputs) == 3:
+        elif len(inputs_) == 3:
             detail_msg = "can only be 2 since there are only 3 inputs"
         else:
-            detail_msg = f"should between 2 to {len(inputs) - 1}"
+            detail_msg = f"should between 2 to {len(inputs_) - 1}"
         raise ValueError(f"Argument top_n_toverr out of range. ({detail_msg})")
 
-    logger.info("Found %s MSA fasta.", len(inputs))
+    logger.info("Found %s MSA fasta.", len(inputs_))
 
-    mfa2treelist = MFA2TreeList(data=inputs, seqtype=seqtype)
+    mfa2treelist = MFA2TreeList(data=inputs_, seqtype=seqtype)
 
     # Params for precheck
     params = {"top_n_toverr": top_n_toverr}
@@ -166,22 +99,22 @@ def filter(
     logger.info(f"{__name__.split('.')[-1].capitalize()} module done.")
 
 
-def _input_check(inputs: str | Path | list) -> tuple[Path]:
+def _input_check(inputs: str | Path | list[str | Path]) -> tuple[Path, ...]:
     """Check and adjust the arguments passed in."""
     if isinstance(inputs, list):
-        inputs = tuple(Path(file) for file in inputs)
-        input_dir = {file.parent for file in inputs}
+        inputs_tuple = tuple(Path(file) for file in inputs)
+        input_dir = {file.parent for file in inputs_tuple}
         if len(input_dir) > 1:
             raise RuntimeError("The inputs aren't in the same folder, which indicates it might come from different analysis.")
     else:
         inputs = Path(inputs)
         if inputs.is_file():
-            inputs = (inputs,)
+            inputs_tuple = (inputs,)
         else:
-            inputs = tuple(file for file in inputs.glob(f"*.{FileExts.ALN}"))
-            if not inputs:
+            inputs_tuple = tuple(file for file in inputs.glob(f"*.{FileExts.ALN}"))
+            if not inputs_tuple:
                 raise FileNotFoundError("Empty input directory.")
 
-    if len(inputs) < 3:
+    if len(inputs_tuple) < 3:
         raise ValueError("Fewer than 3 inputs. Please directly build tree with your desired tree building software.")
-    return inputs
+    return inputs_tuple

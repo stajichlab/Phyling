@@ -7,7 +7,14 @@ import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, TextIO
+from typing import Any, Generator, Iterator, Literal
+
+try:
+    # Try the modern location first
+    from typing import Self
+except ImportError:
+    # Fallback to the extension library
+    from typing_extensions import Self
 
 import numpy as np
 
@@ -121,7 +128,7 @@ class Partitions(ABC):
     _model_tbl: np.ndarray = ALL_MODELS
     _stationary_tbl: np.ndarray = STATIONARY_CODES
     _invariant_tbl: np.ndarray = INVARIANT_CODES
-    _methods: tuple[str] = tuple(x.name.lower() for x in TreeMethods)
+    _methods: tuple[str, ...] = tuple(x.name.lower() for x in TreeMethods)
 
     __slots__ = ("_data", "_method_idx", "_avail_models")
 
@@ -138,15 +145,15 @@ class Partitions(ABC):
         self._method_idx: int = self._methods.index(source)
         self._avail_models: np.ndarray = self._model_tbl[self._model_tbl[:, self._method_idx] != "", self._method_idx]
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """Return a string representation of the Partitions.
 
         Returns:
             str: The string representation of the Partitions.
         """
-        return type(self).__qualname__ + f"(seqtype={self.seqtype})" + "\n" + list_repr_wrapper(self._data)
+        return type(self).__qualname__ + "\n" + list_repr_wrapper(self._data)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[PartitionRecord]:
         """Iterate over the PartitionRecord.
 
         Returns:
@@ -174,7 +181,7 @@ class Partitions(ABC):
         if isinstance(key, int):
             return self._data[key]
 
-    def add(self, part_rec: PartitionRecord):
+    def add(self, part_rec: PartitionRecord) -> None:
         """Add a new search PartitionRecord to the Partitions.
 
         Args:
@@ -214,6 +221,7 @@ class Partitions(ABC):
                 raise RuntimeError(f"Model {msa.model} is not mappable to {format} format.")
             if p:
                 model += f"{{{','.join([str(p_) for p_ in p])}}}"
+
             if msa.stationary:
                 stationary, p = self._decipher_param(msa.stationary)
                 stationary = self._stationary_tbl[self._stationary_tbl[:, self._method_idx] == stationary, to_method_idx][
@@ -223,6 +231,8 @@ class Partitions(ABC):
                     raise RuntimeError(f"Stationary code {msa.stationary} is not mappable to {format} format.")
                 if p:
                     stationary += f"{{{','.join([str(p_) for p_ in p])}}}"
+            else:
+                stationary = ""
             if msa.invariant:
                 invariant, p = self._decipher_param(msa.invariant)
                 invariant = self._invariant_tbl[self._invariant_tbl[:, self._method_idx] == invariant, to_method_idx][0].item()
@@ -230,8 +240,12 @@ class Partitions(ABC):
                     raise RuntimeError(f"Invariant code {msa.invariant} is not mappable to {format} format.")
                 if p:
                     invariant += f"{{{','.join([str(p_) for p_ in p])}}}"
+            else:
+                invariant = ""
             if msa.gamma:
                 gamma = decipher_gamma(msa.gamma)
+            else:
+                gamma = ""
 
             new_parts.add(
                 PartitionRecord(
@@ -239,18 +253,20 @@ class Partitions(ABC):
                     start=msa.start,
                     end=msa.end,
                     model=model,
-                    stationary=stationary if msa.stationary else "",
-                    invariant=invariant if msa.invariant else "",
-                    gamma=gamma if msa.gamma else "",
+                    stationary=stationary,
+                    invariant=invariant,
+                    gamma=gamma,
                 )
             )
         return new_parts
 
-    def _decipher_param(self, param: str):
-        name, values = re.match(r"^([^{]+)(?:\{([^}]+)\})?$", param).groups()
-        if values:
-            values = [float(v) for v in values.split(",")]
-        return name, values
+    def _decipher_param(self, param: str) -> tuple[str, list[float]]:
+        if match := re.match(r"^([^{]+)(?:\{([^}]+)\})?$", param):
+            name, values = match.groups()
+            values = [float(v) for v in values.split(",")] if values else []
+            return str(name), values
+        else:
+            raise ValueError("Cannot decipher parameters.")
 
 
 class CustomHandler(ABC):
@@ -258,7 +274,7 @@ class CustomHandler(ABC):
 
     __slots__ = ("_file", "_format")
 
-    def __init__(self, file: str | Path, mode: str = "r", *, format: Literal["raxml", "iqtree"]):
+    def __init__(self, file: str | Path, mode: str = "r", *, format: Literal["raxml", "iqtree"]) -> None:
         """Initialize a CustomHandler object.
 
         Args:
@@ -270,34 +286,34 @@ class CustomHandler(ABC):
         """
         if "b" in mode:
             raise ValueError("File must be opened in text mode, not binary mode.")
-        self._file: TextIO = open(file, mode)
+        self._file = open(file, mode)
         self._format = format
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         """Define the actions that will run when the object is created with `with` statement."""
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         """Define the actions that will run when the object is going to be destroyed by the end of the `with` statement."""
         self.close()
 
-    def close(self):
+    def close(self) -> None:
         """Closes the file."""
         self._file.close()
 
     @abstractmethod
-    def read(self): ...
+    def read(self) -> Any: ...
 
     @abstractmethod
-    def write(self): ...
+    def write(self, *args, **kwargs) -> None: ...
 
-    def readable(self):
+    def readable(self) -> bool:
         return self._file.readable()
 
-    def writable(self):
+    def writable(self) -> bool:
         return self._file.writable()
 
-    def seek(self, offset: int, whence: int = 0, /):
+    def seek(self, offset: int, whence: int = 0, /) -> None:
         self._file.seek(offset, whence)
 
 
@@ -341,7 +357,7 @@ class NexusHandler(CustomHandler):
                 raise RuntimeWarning(f"{title} block processing is not implemented yet.")
         return r
 
-    def write(self, data: dict[str, Partitions]):
+    def write(self, data: dict[str, Partitions]) -> None:
         """Writes data to the file."""
         self._file.write(f"{self._header}\n")
         for block in data:
@@ -359,7 +375,7 @@ class NexusHandler(CustomHandler):
             self._file.write(f"{charpartition};\n")
             self._file.write("end;\n")
 
-    def _parse_line(self):
+    def _parse_line(self) -> str:
         """Reads up to the first occurrence of the custom delimiter."""
         line = ""
         while True:
@@ -369,10 +385,11 @@ class NexusHandler(CustomHandler):
             line += char
         return line.strip()
 
-    def _parse_block(self):
+    def _parse_block(self) -> Generator[tuple[str, list[str]], None, None]:
         inblock = False
-        blocklines = []
+        blocklines: list[str] = []
         line = self._parse_line()
+        title = ""
         while line:
             if line.lower().startswith("begin"):
                 if not inblock:
@@ -391,7 +408,7 @@ class NexusHandler(CustomHandler):
                 blocklines.append(line)
             line = self._parse_line()
 
-    def _parse_sets(self, blocklines: list[str]):
+    def _parse_sets(self, blocklines: list[str]) -> Partitions:
         partitions: dict[str, PartitionRecord] = {}
         while blocklines:
             line = blocklines.pop(0)

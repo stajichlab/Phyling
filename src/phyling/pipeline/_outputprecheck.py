@@ -9,8 +9,8 @@ from typing import Any
 
 from ..lib import FileExts, TreeOutputFiles
 from ..lib._utils import CheckAttrs, remove_dirs, remove_files
-from ..lib.align import SampleList, SampleSeqs, SearchHitsManager
-from ..lib.tree import MFA2Tree, MFA2TreeList
+from ..lib.align import SampleList, SearchHitsManager
+from ..lib.tree import MFA2TreeList
 from . import logger
 
 
@@ -44,11 +44,11 @@ class OutputPrecheckABC(ABC):
         cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __del__(self):
+    def __del__(self) -> None:
         """Resets the class-level singleton instance when the object is destroyed."""
         self.cleanup()
 
-    def __init__(self, output: Path):
+    def __init__(self, output: Path) -> None:
         """Initializes the output directory and checks for required attributes.
 
         Args:
@@ -62,13 +62,13 @@ class OutputPrecheckABC(ABC):
         if missing_attrs:
             raise AttributeError
 
-    def cleanup(self):
+    def cleanup(self) -> None:
         """Cleanup resources and reset the instance."""
         type(self)._instance = None
 
     @CheckAttrs.Exists("output", "ckp")
     @abstractmethod
-    def precheck(self, force_rerun: bool = False) -> tuple | None:
+    def precheck(self, *, force_rerun: bool = False) -> tuple | None:
         """Checks the output folder and determines the rerun status.
 
         Args:
@@ -97,7 +97,7 @@ class OutputPrecheckABC(ABC):
         ...
 
     @CheckAttrs.Exists("output", "ckp")
-    def load_checkpoint(self) -> tuple[dict[str, Any], ...]:
+    def load_checkpoint(self) -> tuple[Any, ...]:
         """Loads the checkpoint and retrieves the required parameters/data for determining the rerun status.
 
         This method should be called before running the output precheck.
@@ -121,18 +121,18 @@ class OutputPrecheckABC(ABC):
         return params, *data
 
     @CheckAttrs.Exists("output", "ckp")
-    def save_checkpoint(self, *data) -> None:
+    def save_checkpoint(self, data: Any) -> None:
         """Saves the parameters and data as a checkpoint for rerun.
 
         Args:
-            params (dict): Parameters to save in the checkpoint.
             *data: Additional data to save in the checkpoint.
         """
+        self._type_check(self.params, data)
         with open(self.output / self.ckp, "wb") as f:
-            pickle.dump((self.params, *data), f)
+            pickle.dump((self.params, data), f)
 
     @abstractmethod
-    def _type_check(self) -> None:
+    def _type_check(self, *args, **kwargs) -> None:
         """Performs a type check before saving or after loading the checkpoint.
 
         This method should be defined in the subclass to implement specific type checking logic.
@@ -140,12 +140,12 @@ class OutputPrecheckABC(ABC):
         ...
 
     @abstractmethod
-    def _determine_rerun(self, cur: tuple, prev: tuple) -> tuple:
+    def _determine_rerun(self, prev_params: dict[str, Any], prev_data: Any) -> tuple[Any, ...]:
         """Defines actions to take when a checkpoint file is found in the output folder.
 
         Args:
-            cur (tuple): Current checkpoint data.
-            prev (tuple): Previous checkpoint data.
+            prev_param (dict): Current checkpoint data.
+            prev_data (T): Previous checkpoint data.
 
         Returns:
             tuple: Status or actions for rerun based on checkpoint data.
@@ -170,21 +170,21 @@ class AlignPrecheck(OutputPrecheckABC):
     ckp: str = ".align.ckp"
     params: dict = {param: None for param in ("markerset", "markerset_cutoff", "method")}
 
-    def __init__(self, output: Path, samplelist: SampleList, **params) -> None:
+    def __init__(self, output: Path, data: SampleList, **params) -> None:
         """Initialize AlignPrecheck with output directory and SampleList.
 
         Args:
             output (Path): Directory for storing output files.
-            samplelist (SampleList): A collection of sample sequences.
+            data (SampleList): A collection of sample sequences.
             **params: Additional parameters for alignment.
 
         Raises:
             TypeError: If `samplelist` is not an instance of `SampleList`.
         """
         super().__init__(output)
-        if not isinstance(samplelist, SampleList):
-            raise TypeError(f"Argument samplelist only accepts {SampleList.__qualname__}. Got {type(samplelist)}.")
-        self.samplelist: SampleList[SampleSeqs] = samplelist
+        if not isinstance(data, SampleList):
+            raise TypeError(f"Argument samplelist only accepts {SampleList.__qualname__}. Got {type(data)}.")
+        self.data: SampleList = data
         self.params.update(**params)
 
     def precheck(self, *, force_rerun: bool = False) -> tuple[SampleList, SearchHitsManager]:
@@ -198,11 +198,11 @@ class AlignPrecheck(OutputPrecheckABC):
         """
         super().precheck(force_rerun=force_rerun)
         if not any(self.output.iterdir()):
-            return self.samplelist, SearchHitsManager()
+            return self.data, SearchHitsManager()
         prev_params, prev_searchhits = self.load_checkpoint()
         return self._determine_rerun(prev_params, prev_searchhits)
 
-    def load_checkpoint(self) -> tuple[dict, SearchHitsManager]:
+    def load_checkpoint(self) -> tuple[dict[str, Any], SearchHitsManager]:
         """Load checkpoint data for rerun decisions.
 
         Returns:
@@ -220,17 +220,16 @@ class AlignPrecheck(OutputPrecheckABC):
         self._type_check(prev_params, prev_searchhits)
         return prev_params, prev_searchhits
 
-    def save_checkpoint(self, searchhits: SearchHitsManager) -> None:
+    def save_checkpoint(self, data: SearchHitsManager) -> None:
         """Save the current parameters and search hits as a checkpoint.
 
         Args:
-            searchhits (SearchHitsManager): Search hits data to save.
+            data (SearchHitsManager): Search hits data to save.
 
         Raises:
             RuntimeError: If the checkpoint data fails type validation.
         """
-        self._type_check(self.params, searchhits)
-        return super().save_checkpoint(searchhits)
+        super().save_checkpoint(data)
 
     def _type_check(self, params: dict, searchhits: SearchHitsManager) -> None:
         """Validate the types of parameters and search hits.
@@ -249,14 +248,14 @@ class AlignPrecheck(OutputPrecheckABC):
 
     def _determine_rerun(
         self,
-        prev_params: dict,
-        prev_searchhits: SearchHitsManager,
+        prev_params: dict[str, Any],
+        prev_data: SearchHitsManager,
     ) -> tuple[SampleList, SearchHitsManager]:
         """Handle rerun logic based on checkpoint data.
 
         Args:
             prev_params (dict): Previously saved parameters.
-            prev_searchhits (SearchHitsManager): Previously saved search hits.
+            prev_data (SearchHitsManager): Previously saved search hits.
 
         Returns:
             tuple[SampleList, SearchHitsManager]: Updated sample list and filtered search hits.
@@ -264,34 +263,34 @@ class AlignPrecheck(OutputPrecheckABC):
         Raises:
             SystemExit: If incompatible changes are detected in the parameters or sequence type.
         """
-        prev_samplelist = prev_searchhits.samplelist
+        prev_samplelist = prev_data.samplelist
 
-        if prev_samplelist.seqtype != self.samplelist.seqtype:
+        if prev_samplelist.seqtype != self.data.seqtype:
             raise SystemExit("Seqtype is changed. Aborted.")
         diff_params = {param[0] for param in set(self.params.items()) ^ set(prev_params.items())}
-        diff_inputs = set(prev_samplelist.checksums.keys()) ^ set(self.samplelist.checksums.keys())
+        diff_inputs = set(prev_samplelist.checksums.keys()) ^ set(self.data.checksums.keys())
         if not (diff_params or diff_inputs) and sum(1 for _ in self.output.iterdir()) > 1:
             raise SystemExit("Files not changed and parameters are identical to the previous run. Aborted.")
         if "markerset" in diff_params:
             raise SystemExit("Markerset is changed. Aborted.")
         if "markerset_cutoff" in diff_params:
-            return self.samplelist, SearchHitsManager()
+            return self.data, SearchHitsManager()
 
         # Remove files
         rm_files = [x for x in self.output.iterdir() if x.is_file() if x.name != self.ckp]
-        drop_samples = [x.name for x in prev_samplelist if x.name not in self.samplelist]
+        drop_samples = [x.name for x in prev_samplelist if x.name not in self.data]
         if drop_samples:
             logger.info("Remove samples that no longer exist from the orthologs collection retrieved from the checkpoint.")
             logger.debug("Removed samples: %s", ", ".join(drop_samples))
-            searchhits = prev_searchhits.filter(drop_samples=drop_samples)
+            searchhits = prev_data.filter(drop_samples=drop_samples)
         else:
-            searchhits = prev_searchhits
+            searchhits = prev_data
         remove_files(*rm_files)
 
         # Determine the samples need rerun
         remained_samples = SampleList()
         prev_checksums_d = searchhits.samplelist.checksums
-        for checksum, sample in self.samplelist.checksums.items():
+        for checksum, sample in self.data.checksums.items():
             if checksum in prev_checksums_d:
                 prev_sample = prev_checksums_d[checksum]
                 # Update name and file path using current samples
@@ -315,7 +314,7 @@ class FilterPrecheck(OutputPrecheckABC):
     ckp: str = ".filter.ckp"
     params: dict = {"top_n_toverr": None}
 
-    def __init__(self, output: Path, mfa2treelist: MFA2TreeList, **params) -> None:
+    def __init__(self, output: Path, data: MFA2TreeList, **params) -> None:
         """Initialize TreePrecheck with output directory and MFA2Tree list.
 
         Args:
@@ -327,9 +326,9 @@ class FilterPrecheck(OutputPrecheckABC):
             TypeError: If `mfa2treelist` is not an instance of `MFA2TreeList`.
         """
         super().__init__(output)
-        if not isinstance(mfa2treelist, MFA2TreeList):
-            raise TypeError(f"Argument mfa2treelist only accepts {MFA2TreeList.__qualname__}. Got {type(mfa2treelist)}.")
-        self.mfa2treelist: MFA2TreeList[MFA2Tree] = mfa2treelist
+        if not isinstance(data, MFA2TreeList):
+            raise TypeError(f"Argument mfa2treelist only accepts {MFA2TreeList.__qualname__}. Got {type(data)}.")
+        self.data: MFA2TreeList = data
         self.params.update(**params)
 
     def precheck(self, *, force_rerun: bool = False) -> tuple[MFA2TreeList, MFA2TreeList]:
@@ -343,7 +342,7 @@ class FilterPrecheck(OutputPrecheckABC):
         """
         super().precheck(force_rerun=force_rerun)
         if not any(self.output.iterdir()):
-            return self.mfa2treelist, MFA2TreeList()
+            return self.data, MFA2TreeList()
         prev_params, prev_mfa2treelist = self.load_checkpoint()
         return self._determine_rerun(prev_params, prev_mfa2treelist)
 
@@ -365,17 +364,16 @@ class FilterPrecheck(OutputPrecheckABC):
         self._type_check(prev_params, mfa2treelist)
         return prev_params, mfa2treelist
 
-    def save_checkpoint(self, mfa2treelist: MFA2TreeList) -> None:
+    def save_checkpoint(self, data: MFA2TreeList) -> None:
         """Save the current parameters and MFA2Tree list as a checkpoint.
 
         Args:
-            mfa2treelist (MFA2TreeList): MFA2Tree list data to save.
+            data (MFA2TreeList): MFA2Tree list data to save.
 
         Raises:
             RuntimeError: If the checkpoint data fails type validation.
         """
-        self._type_check(self.params, mfa2treelist)
-        super().save_checkpoint(mfa2treelist)
+        super().save_checkpoint(data)
 
     def _type_check(self, params, mfa2treelist):
         """Validate the types of parameters and MFA2Tree list.
@@ -392,12 +390,12 @@ class FilterPrecheck(OutputPrecheckABC):
                 f"Checkpoint file {self.output / self.ckp} is corrupted. Please remove the output folder and try again."
             )
 
-    def _determine_rerun(self, prev_params: dict, prev_mfa2treelist: MFA2TreeList) -> MFA2TreeList:
+    def _determine_rerun(self, prev_params: dict[str, Any], prev_data: MFA2TreeList) -> tuple[MFA2TreeList, MFA2TreeList]:
         """Handle rerun logic based on checkpoint data.
 
         Args:
             prev_params (dict): Previously saved parameters.
-            prev_mfa2treelist (MFA2TreeList): Previously saved MFA2Tree list.
+            prev_data (MFA2TreeList): Previously saved MFA2Tree list.
 
         Returns:
             tuple[MFA2TreeList, MFA2TreeList]: Updated MFA2Tree list and completed trees.
@@ -406,7 +404,7 @@ class FilterPrecheck(OutputPrecheckABC):
             SystemExit: If incompatible changes are detected in the parameters or sequence type.
         """
 
-        if prev_mfa2treelist.seqtype != self.mfa2treelist.seqtype:
+        if prev_data.seqtype != self.data.seqtype:
             raise SystemExit("Seqtype is changed. Aborted.")
         diff_params = {param[0] for param in set(self.params.items()) ^ set(prev_params.items())}
         if not diff_params and len(list(self.output.iterdir())) > 1:
@@ -414,9 +412,9 @@ class FilterPrecheck(OutputPrecheckABC):
 
         completed_mfa2treelist = MFA2TreeList()
         remained_mfa2treelist = MFA2TreeList()
-        for msa in self.mfa2treelist:
-            if msa.name in prev_mfa2treelist:
-                prev_msa = prev_mfa2treelist[msa.name]
+        for msa in self.data:
+            if msa.name in prev_data:
+                prev_msa = prev_data[msa.name]
                 if msa.checksum == prev_msa.checksum and prev_msa.toverr:
                     prev_msa.file, prev_msa.name = msa.file, msa.name
                     completed_mfa2treelist.append(prev_msa)

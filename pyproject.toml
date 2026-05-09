@@ -34,6 +34,7 @@ dependencies = [
   "phykit>=2.0.1",
   "pyfaidx>=0.9.0.3",
   "pyhmmer>=0.12.0",
+  "typing-extensions; python_version < '3.10'",
 ]
 dynamic = ["version"]
 
@@ -48,7 +49,7 @@ dev = [
 ]
 
 [project.scripts]
-phyling = "phyling.__main__:main"
+phyling = "phyling.main:run_cli"
 
 [project.urls]
 "Homepage" = "https://github.com/stajichlab/Phyling"

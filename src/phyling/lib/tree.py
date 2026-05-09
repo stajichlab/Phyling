@@ -9,7 +9,14 @@ import traceback
 from functools import partial, wraps
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
-from typing import Callable, Literal, Sequence, TypeVar, overload
+from typing import Callable, Literal, Sequence, TypeVar, cast, overload
+
+try:
+    # Try the modern location first
+    from typing import Concatenate, ParamSpec, Self
+except ImportError:
+    # Fallback to the extension library
+    from typing_extensions import Concatenate, ParamSpec, Self
 
 from Bio import AlignIO, Phylo, SeqIO
 from Bio.Align import MultipleSeqAlignment
@@ -24,11 +31,14 @@ from ._utils import CheckAttrs, Timer, guess_seqtype, is_gzip_file
 
 __all__ = ["MFA2Tree", "MFA2TreeList"]
 logger = logging.getLogger(__name__)
-_R = TypeVar("Return")
-_C = TypeVar("Callable", bound=Callable[..., _R])
+
+_T = TypeVar("_T")
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+_MFA2TreeList = TypeVar("_MFA2TreeList", bound="MFA2TreeList")
 
 
-def _check_attributes(*attrs: str) -> Callable[[_C], _C]:
+def _check_attributes(*attrs: str) -> Callable[[Callable[Concatenate[_T, _P], _R]], Callable[Concatenate[_T, _P], _R]]:
     """Decorator to ensure specific attributes are initialized before executing the function.
 
     Args:
@@ -46,9 +56,9 @@ def _check_attributes(*attrs: str) -> Callable[[_C], _C]:
     if invalid_attrs:
         raise AttributeError(f"Invalid attribute names: {invalid_attrs}")
 
-    def decorator(func: _C) -> _C:
+    def decorator(func: Callable[Concatenate[_T, _P], _R]) -> Callable[Concatenate[_T, _P], _R]:
         @wraps(func)
-        def wrapper(instance, *args, **kwargs):
+        def wrapper(instance: _T, *args: _P.args, **kwargs: _P.kwargs) -> _R:
             """Validate variable inequality and execute the wrapped function."""
             none_attrs = CheckAttrs.is_none(instance, *attrs)
             for var in sorted(none_attrs, key=lambda x: list(var_mapping.keys()).index(x)):
@@ -60,7 +70,7 @@ def _check_attributes(*attrs: str) -> Callable[[_C], _C]:
     return decorator
 
 
-def _check_single_file(func: _C) -> _C:
+def _check_single_file(func: Callable[Concatenate[_MFA2TreeList, _P], _R]) -> Callable[Concatenate[_MFA2TreeList, _P], _R]:
     """Decorator to ensure that the method is only called on a list with multiple MFA files.
 
     This decorator checks if the `MFA2TreeList` instance contains more than one MFA file. If there is only one file, it raises a
@@ -77,7 +87,7 @@ def _check_single_file(func: _C) -> _C:
     """
 
     @wraps(func)
-    def wrapper(self: MFA2TreeList, *args, **kwargs):
+    def wrapper(self: _MFA2TreeList, *args, **kwargs) -> _R:
         if len(self) < 2:
             raise RuntimeError(f"{func.__name__} cannot be run since only found a single mfa.")
         return func(self, *args, **kwargs)
@@ -92,13 +102,12 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
     """
 
     __slots__ = ("_logger", "_method", "_tree", "_toverr", "_saturation")
+    _data: MultipleSeqAlignment  # type: ignore
 
     @overload
     def __init__(self, file: str | Path, *, seqtype: Literal["dna", "pep", "AUTO"] = "AUTO") -> None: ...
-
     @overload
     def __init__(self, file: str | Path, name: str, *, seqtype: Literal["dna", "pep", "AUTO"] = "AUTO") -> None: ...
-
     def __init__(self, file: str | Path, name: str | None = None, *, seqtype: Literal["dna", "pep", "AUTO"] = "AUTO") -> None:
         """Initialize a MFA2Tree object.
 
@@ -123,10 +132,10 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
         """
         super().__init__(file, name, seqtype=seqtype)
         self._logger: logging.Logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        self._method: str = None
-        self._tree: Tree = None
-        self._toverr: float = None
-        self._saturation: float = None
+        self._method: str | None = None
+        self._tree: Tree | None = None
+        self._toverr: float | None = None
+        self._saturation: float | None = None
 
     @_abc.check_loaded
     def __len__(self) -> int:
@@ -138,7 +147,7 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
         return self._data.get_alignment_length()
 
     @_abc.check_class
-    def __gt__(self, other: MFA2Tree) -> bool:
+    def __gt__(self, other: Self) -> bool:
         """Compare if the current object is larger than another object.
 
         Args:
@@ -150,7 +159,7 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
         return self.toverr > other.toverr
 
     @_abc.check_class
-    def __ge__(self, other: MFA2Tree) -> bool:
+    def __ge__(self, other: Self) -> bool:
         """Compare if the current object is larger than or equal to another object.
 
         Args:
@@ -162,7 +171,7 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
         return self.toverr >= other.toverr
 
     @_abc.check_class
-    def __lt__(self, other: MFA2Tree) -> bool:
+    def __lt__(self, other: Self) -> bool:
         """Compare if the current object is smaller than another object.
 
         Args:
@@ -174,7 +183,7 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
         return self.toverr < other.toverr
 
     @_abc.check_class
-    def __le__(self, other: MFA2Tree) -> bool:
+    def __le__(self, other: Self) -> bool:
         """Compare if the current object is smaller than or equal to another object.
 
         Args:
@@ -186,7 +195,7 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
         return self.toverr <= other.toverr
 
     @_abc.check_class
-    def __eq__(self, other: MFA2Tree) -> bool:
+    def __eq__(self, other: object) -> bool:
         """Check if the current object is equal to another object.
 
         Args:
@@ -195,6 +204,8 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
         Returns:
             bool: True if the objects have the same toverr, otherwise False.
         """
+        if not isinstance(other, type(self)):
+            return NotImplemented
         return self.toverr == other.toverr
 
     def load(self) -> None:
@@ -214,7 +225,7 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
         Raises:
             AttributeError: If tree haven't built.
         """
-        return self._tree
+        return cast(Tree, self._tree)
 
     @property
     @_check_attributes("_tree")
@@ -224,7 +235,7 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
         Raises:
             AttributeError: If tree haven't built.
         """
-        return self._method
+        return cast(str, self._method)
 
     @property
     @_check_attributes("_tree", "_toverr")
@@ -235,7 +246,7 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
             AttributeError: If tree haven't built.
             AttributeError: If the toverr haven't calculated.
         """
-        return self._toverr
+        return cast(float, self._toverr)
 
     @property
     @_check_attributes("_tree", "_saturation")
@@ -246,7 +257,7 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
             AttributeError: If tree haven't built.
             AttributeError: If the saturation haven't calculated.
         """
-        return self._saturation
+        return cast(float, self._saturation)
 
     @overload
     def build(
@@ -262,7 +273,6 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
         threads: int = -1,
         threads_max: int = AVAIL_CPUS,
     ) -> Tree: ...
-
     @overload
     def build(
         self,
@@ -277,7 +287,6 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
         threads: int = -1,
         threads_max: int = AVAIL_CPUS,
     ) -> Path: ...
-
     @_abc.load_data
     def build(
         self,
@@ -326,8 +335,8 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
             Raxml,
         )
 
-        method = method.upper()
-        if method not in [m.name for m in TreeMethods]:
+        method_upper = method.upper()
+        if method_upper not in [m.name for m in TreeMethods]:
             raise KeyError(f"Invalid method: {method}. Expected one of: {', '.join([m.name.lower() for m in TreeMethods])}")
 
         tempdir = None
@@ -343,8 +352,8 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
                 modelfinder = ModelFinder(
                     self.file,
                     output / "modelfinder",
-                    seqtype=self.seqtype,
-                    method=method.lower(),
+                    seqtype=cast(Literal["AUTO", "dna", "pep"], self.seqtype),
+                    method=method,
                     seed=seed,
                     threads=threads,
                     threads_max=threads_max,
@@ -355,53 +364,53 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
                 self._logger.info(f"Best-fit model: {model}")
             elif Path(model).is_file():
                 # Partitioning analysis
-                if method == TreeMethods.FT.name:
+                if method_upper == TreeMethods.FT.name:
                     raise ValueError(f"{TreeMethods.FT.method} does not support partitioning analysis.")
 
-            if method == TreeMethods.FT.name:
+            if method_upper == TreeMethods.FT.name:
                 runner = FastTree(
                     self.file,
                     output / f"{self.file.name}.nw",
-                    seqtype=self.seqtype,
-                    model=model,
+                    seqtype=cast(Literal["dna", "pep"], self.seqtype),
+                    model=str(model),
                     noml=noml,
                     **kwargs,
                 )
-            elif method == TreeMethods.RAXML.name:
+            elif method_upper == TreeMethods.RAXML.name:
                 runner = Raxml(
                     self.file,
                     output / self.file.name,
-                    seqtype=self.seqtype,
-                    model=model,
+                    seqtype=cast(Literal["AUTO", "dna", "pep"], self.seqtype),
+                    model=str(model),
                     seed=seed,
                     threads=threads,
                     threads_max=threads_max,
                     **kwargs,
                 )
-            elif method == TreeMethods.IQTREE.name:
+            elif method_upper == TreeMethods.IQTREE.name:
                 runner = Iqtree(
                     self.file,
                     output / self.file.name,
-                    seqtype=self.seqtype,
-                    model=model,
+                    seqtype=cast(Literal["AUTO", "dna", "pep"], self.seqtype),
+                    model=str(model),
                     seed=seed,
                     threads=threads,
                     threads_max=threads_max,
                     **kwargs,
                 )
             else:
-                raise NotImplementedError(f"Method not implemented yet: {TreeMethods[method].name}.")
+                raise NotImplementedError(f"Method not implemented yet: {TreeMethods[method_upper].name}.")
 
             self._logger.info(f"Build tree by {runner._prog}...")
             runner.run()
-            self._method = method
-            self._tree = Phylo.read(runner.result, "newick")
+            self._method = method_upper
+            tree_file = runner.result
 
             if bs > 0:
                 self._logger.info("Bootstrapping...")
                 tree_file = bootstrap(
                     self,
-                    runner.result,
+                    tree_file,
                     output / "ufboot",
                     runner.model,
                     bs=bs,
@@ -409,7 +418,6 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
                     threads=threads,
                     threads_max=threads_max,
                 )
-                self._tree = Phylo.read(tree_file, "newick")
 
             if scfl > 0:
                 self._logger.info("Calculating site concordance factor...")
@@ -423,7 +431,8 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
                     threads=threads,
                     threads_max=threads_max,
                 )
-                self._tree = Phylo.read(tree_file, "newick")
+
+            self._tree = Phylo.read(tree_file, "newick")
 
         finally:
             if tempdir:
@@ -433,7 +442,7 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
         if tempdir:
             return self.tree
         else:
-            return runner.result
+            return Path(runner.result)
 
     @_check_attributes("_tree")
     def compute_toverr(self) -> None:
@@ -449,15 +458,16 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
 
         self._saturation = Saturation().compute_saturation(self._data, self.tree)
 
-    def _guess_seqtype(self) -> str:
+    def _guess_seqtype(self) -> Literal["dna", "pep", "rna", "NaN"]:
         """Guess and return the sequence type."""
         f = gzip.open(self.file, "rt") if is_gzip_file(self.file) else open(self.file)
 
         for r in FastaIO.SimpleFastaParser(f):
             seqtype = guess_seqtype(r[1], ignore_failed=True)
             if seqtype:
-                f.close()
-                return seqtype
+                break
+        f.close()
+        return seqtype
 
 
 class MFA2TreeList(_abc.SeqDataListABC[MFA2Tree]):
@@ -470,17 +480,25 @@ class MFA2TreeList(_abc.SeqDataListABC[MFA2Tree]):
     _bound_class = MFA2Tree
 
     @overload
-    def __init__(self, data: Sequence[str | Path | MFA2Tree], *, seqtype: Literal["dna", "pep", "AUTO"] = "AUTO") -> None: ...
-
+    def __init__(self) -> None: ...
+    @overload
+    def __init__(self, data: Sequence[str | Path | MFA2Tree]) -> None: ...
+    @overload
+    def __init__(self, data: Sequence[str | Path | MFA2Tree], names: Sequence[str]) -> None: ...
+    @overload
+    def __init__(self, data: Sequence[str | Path | MFA2Tree], *, seqtype: Literal["dna", "pep", "AUTO"]) -> None: ...
+    @overload
+    def __init__(
+        self, data: Sequence[str | Path | MFA2Tree], names: Sequence[str], *, seqtype: Literal["dna", "pep", "AUTO"]
+    ) -> None: ...
     @overload
     def __init__(
         self, data: Sequence[str | Path | MFA2Tree], names: Sequence[str], *, seqtype: Literal["dna", "pep", "AUTO"] = "AUTO"
     ) -> None: ...
-
     def __init__(
         self,
-        data: Sequence[str | Path | MFA2Tree] | None = None,
-        names: Sequence[str] | None = None,
+        data: Sequence[str | Path | MFA2Tree] = (),
+        names: Sequence[str] = (),
         *,
         seqtype: Literal["dna", "pep", "AUTO"] = "AUTO",
     ) -> None:
@@ -500,13 +518,10 @@ class MFA2TreeList(_abc.SeqDataListABC[MFA2Tree]):
 
     @overload
     def __getitem__(self, key: str) -> MFA2Tree: ...
-
     @overload
     def __getitem__(self, key: int) -> MFA2Tree: ...
-
     @overload
     def __getitem__(self, key: slice) -> MFA2TreeList: ...
-
     def __getitem__(self, key: str | int | slice) -> MFA2Tree | MFA2TreeList:
         """Retrieves an item or subset of items by name, index, or slice.
 
@@ -663,10 +678,8 @@ class MFA2TreeList(_abc.SeqDataListABC[MFA2Tree]):
 
     @overload
     def get_consensus_tree(self, output: None, *, seed: int = -1, threads: int = 1) -> Tree: ...
-
     @overload
     def get_consensus_tree(self, output: str | Path, *, seed: int = -1, threads: int = 1) -> Path: ...
-
     @Timer.timer
     @_check_single_file
     def get_consensus_tree(self, output: str | Path | None = None, *, seed: int = -1, threads: int = 1) -> Tree | Path:
@@ -708,7 +721,7 @@ class MFA2TreeList(_abc.SeqDataListABC[MFA2Tree]):
         if tempdir:
             return Phylo.read(runner.result, "newick")
         else:
-            return runner.result
+            return Path(runner.result)
 
     @Timer.timer
     @_check_single_file
@@ -805,8 +818,6 @@ def bootstrap(
     threads: int = -1,
     threads_max: int = AVAIL_CPUS,
 ) -> Tree: ...
-
-
 @overload
 def bootstrap(
     mfa2tree: MFA2Tree,
@@ -819,8 +830,6 @@ def bootstrap(
     threads: int = -1,
     threads_max: int = AVAIL_CPUS,
 ) -> Path: ...
-
-
 def bootstrap(
     mfa2tree: MFA2Tree,
     tree: str | Path,
@@ -862,7 +871,7 @@ def bootstrap(
         output = Path(output)
         output.mkdir(exist_ok=True)
 
-        runner = UFBoot(mfa2tree.file, tree, output, model=model, bs=bs, seed=seed, threads=threads, threads_max=threads_max)
+        runner = UFBoot(mfa2tree.file, tree, output, model=str(model), bs=bs, seed=seed, threads=threads, threads_max=threads_max)
         runner.run()
 
     finally:
@@ -872,7 +881,7 @@ def bootstrap(
     if tempdir:
         return Phylo.read(runner.result, "newick")
     else:
-        return runner.result
+        return Path(runner.result)
 
 
 @overload
@@ -887,8 +896,6 @@ def branch_concordance(
     threads: int = -1,
     threads_max: int = AVAIL_CPUS,
 ) -> Tree: ...
-
-
 @overload
 def branch_concordance(
     mfa2tree: MFA2Tree,
@@ -901,8 +908,6 @@ def branch_concordance(
     threads: int = -1,
     threads_max: int = AVAIL_CPUS,
 ) -> Path: ...
-
-
 def branch_concordance(
     mfa2tree: MFA2Tree,
     tree: str | Path,
@@ -946,7 +951,7 @@ def branch_concordance(
         output.mkdir(exist_ok=True)
 
         runner = Concordance(
-            mfa2tree.file, tree, output, model=model, scfl=scfl, seed=seed, threads=threads, threads_max=threads_max
+            mfa2tree.file, tree, output, model=str(model), scfl=scfl, seed=seed, threads=threads, threads_max=threads_max
         )
         runner.run()
 
@@ -957,7 +962,7 @@ def branch_concordance(
     if tempdir:
         return Phylo.read(runner.result, "newick")
     else:
-        return runner.result
+        return Path(runner.result)
 
 
 def _compute_toverr_helper(instance: MFA2Tree) -> None:
@@ -988,7 +993,7 @@ def _build_helper(
     scfl: int = 0,
     seed: int = -1,
     threads: int = 1,
-) -> Tree:
+) -> None:
     """Helper function to run the `build` method on an MFA2Tree instance.
 
     Args:

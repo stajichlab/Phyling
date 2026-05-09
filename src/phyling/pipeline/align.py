@@ -1,28 +1,16 @@
-"""Perform multiple sequence alignment (MSA) on orthologous sequences that match the hmm markers across samples.
-
-Initially, hmmsearch is used to match the samples against a given markerset and report the top hit of each sample for each hmm
-marker, representing "orthologs" across all samples. In order to build a tree, minimum of 4 samples should be used. If the
-bitscore cutoff file is present in the hmms folder, it will be used as the cutoff. Otherwise, an evalue of 1e-10 will be used as
-the default cutoff.
-
-Sequences corresponding to orthologs found in more than 4 samples are extracted from each input. These sequences then undergo MSA
-with hmmalign or muscle. The resulting alignments are further trimmed using clipkit by default. You can use the --non_trim option
-to skip the trimming step. Finally, The alignment results are output separately for each hmm marker.
-"""
+"""Perform multiple sequence alignment (MSA) on orthologous sequences that match the hmm markers across samples."""
 
 from __future__ import annotations
 
-import argparse
 import logging
 import re
-import time
 from multiprocessing import Manager, Pool
 from pathlib import Path
 from typing import Literal
 
 from Bio import SeqIO
 
-from .. import AVAIL_CPUS, CFG_DIRS
+from .. import CFG_DIRS
 from ..exception import EmptyWarning
 from ..external._libclipkit import trim_gaps
 from ..lib import ALIGN_METHODS, FileExts, SeqTypes
@@ -31,82 +19,6 @@ from ..lib.align import HMMMarkerSet, OrthologList, SampleList
 from ._outputprecheck import AlignPrecheck
 
 logger = logging.getLogger(__name__)
-
-
-def menu(parser: argparse.ArgumentParser) -> None:
-    """Menu for align module."""
-    req_args = parser.add_argument_group("Required arguments")
-    input_type = req_args.add_mutually_exclusive_group(required=True)
-    input_type.add_argument(
-        "-i",
-        "--inputs",
-        dest="inputs",
-        metavar=("file", "files"),
-        nargs="+",
-        help="Query pepetide/cds fasta or gzipped fasta",
-    )
-    input_type.add_argument(
-        "-I",
-        "--input_dir",
-        dest="inputs",
-        metavar="directory",
-        type=Path,
-        help="Directory containing query pepetide/cds fasta or gzipped fasta",
-    )
-    req_args.add_argument(
-        "-m",
-        "--markerset",
-        metavar="directory",
-        type=Path,
-        required=True,
-        help="Directory of the HMM markerset",
-    )
-    opt_args = parser.add_argument_group("Options")
-    opt_args.add_argument(
-        "-o",
-        "--output",
-        metavar="directory",
-        type=Path,
-        default="phyling-align-%s" % time.strftime("%Y%m%d-%H%M%S", time.gmtime()),
-        help="Output directory of the alignment results (default: phyling-align-[YYYYMMDD-HHMMSS] (UTC timestamp))",
-    )
-    opt_args.add_argument(
-        "--seqtype",
-        choices=["dna", "pep", "AUTO"],
-        default="AUTO",
-        help="Input data sequence type",
-    )
-    opt_args.add_argument(
-        "-E",
-        "--evalue",
-        metavar="float",
-        type=float,
-        default=1e-10,
-        help="Hmmsearch reporting threshold (default: %(default)s, only being used when bitscore cutoff file is not available)",
-    )
-    opt_args.add_argument(
-        "-M",
-        "--method",
-        choices=ALIGN_METHODS,
-        default="hmmalign",
-        help="Program used for multiple sequence alignment",
-    )
-    opt_args.add_argument(
-        "--non_trim",
-        action="store_true",
-        help="Report non-trimmed alignment results",
-    )
-    opt_args.add_argument(
-        "-t",
-        "--threads",
-        type=int,
-        default=AVAIL_CPUS // 4 * 4,
-        help="Threads for hmmsearch and the number of parallelized jobs in MSA step. "
-        + "Better be multiple of 4 if using more than 8 threads",
-    )
-    opt_args.add_argument("-v", "--verbose", action="store_true", help="Verbose mode for debug")
-    opt_args.add_argument("-h", "--help", action="help", help="show this help message and exit")
-    parser.set_defaults(func=align)
 
 
 @Timer.timer
@@ -125,29 +37,30 @@ def align(
 ) -> None:
     """A pipeline that do hmmsearch to identify orthologs and align them through hmmalign or MUSCLE."""
 
-    inputs, markerset, evalue, method = _args_check(inputs, markerset, evalue, method)
+    inputs_, markerset_, evalue_, method_ = _args_check(inputs, markerset, evalue, method)
+    output = Path(output)
 
-    logger.info("Found %s samples.", len(inputs))
+    logger.info("Found %s samples.", len(inputs_))
     names = [
         re.sub(
             r"(\.(aa|pep|cds|fna|faa))?\.(fasta|fas|faa|fna|seq|fa)(\.gz)?",
             "",
             sample.name,
         )
-        for sample in inputs
+        for sample in inputs_
     ]
-    samples = SampleList(inputs, names, seqtype=seqtype)
+    samples = SampleList(inputs_, names, seqtype=seqtype)
 
-    logger.info("Loading markerset from %s...", markerset)
-    hmmmarkerset = HMMMarkerSet(markerset, markerset.parent / "scores_cutoff")
+    logger.info("Loading markerset from %s...", markerset_)
+    hmmmarkerset = HMMMarkerSet(markerset_, markerset_.parent / "scores_cutoff")
     hmmmarkerset.sort(key=lambda x: x.name)
     logger.debug("Load markerset done.")
 
     # Params for precheck
     params = {
         "markerset": tuple(hmmmarkerset.checksums.keys()),
-        "markerset_cutoff": "markerset cutoff" if hmmmarkerset.have_cutoffs() else evalue,
-        "method": method,
+        "markerset_cutoff": "markerset cutoff" if hmmmarkerset.have_cutoffs() else evalue_,
+        "method": method_,
     }
     # Precheck and load checkpoint if it exist
     output_precheck = AlignPrecheck(output, samples, **params)
@@ -155,7 +68,7 @@ def align(
     if remaining_samples:
         logger.info("Search start...")
         jobs, threads_per_job = _search_threads_check(len(remaining_samples), threads)
-        hits = remaining_samples.search(hmmmarkerset, evalue=evalue, jobs=jobs, threads=threads_per_job)
+        hits = remaining_samples.search(hmmmarkerset, evalue=evalue_, jobs=jobs, threads=threads_per_job)
         searchhits.update(hits)
         logger.info("Search done.")
 
@@ -172,10 +85,13 @@ def align(
     logger.debug("Filter hits done.")
 
     searchhits.load()
-    orthologs = OrthologList(searchhits.orthologs.values(), searchhits.orthologs.keys(), seqtype=samples.seqtype)
+    searchhits.orthologs.values()
+    orthologs = OrthologList(list(searchhits.orthologs.values()), list(searchhits.orthologs.keys()), seqtype=seqtype)
 
     logger.info("Alignment start...")
-    msa_list = orthologs.align(method=method, hmms=hmmmarkerset if method == "hmmalign" else None, jobs=threads)
+    align_kwargs = {}
+    align_kwargs["jobs"] = threads
+    msa_list = orthologs.align(method=method_, hmms=hmmmarkerset if method_ == "hmmalign" else None, jobs=threads)  # type: ignore
     logger.info("Alignment done.")
 
     if not non_trim:
@@ -204,22 +120,22 @@ def _args_check(
     hmmmarkerset: str | Path,
     evalue: float,
     method: str,
-) -> tuple[tuple[Path], Path, float, str]:
+) -> tuple[tuple[Path, ...], Path, float, str]:
     """Check and adjust the arguments passed in."""
     if isinstance(inputs, list):
-        inputs = tuple(Path(sample) for sample in inputs)
+        inputs_tuple = tuple(Path(sample) for sample in inputs)
     else:
         inputs = Path(inputs)
         if inputs.is_file():
-            inputs = (inputs,)
+            inputs_tuple = (inputs,)
         else:
-            inputs = tuple(Path(inputs).iterdir())
-            if not inputs:
+            inputs_tuple = tuple(Path(inputs).iterdir())
+            if not inputs_tuple:
                 raise FileNotFoundError("Empty input directory.")
-    for sample in inputs:
+    for sample in inputs_tuple:
         if sample.is_dir():
             raise IsADirectoryError("Input files contain directory.")
-    if len(inputs) < 4:
+    if len(inputs_tuple) < 4:
         raise ValueError("Requires at least 4 samples.")
 
     hmmmarkerset = Path(hmmmarkerset)
@@ -237,7 +153,7 @@ def _args_check(
     if method not in ALIGN_METHODS:
         raise ValueError(f"Invalid method: {method}")
 
-    return inputs, hmmmarkerset, evalue, method
+    return inputs_tuple, hmmmarkerset, evalue, method
 
 
 def _search_threads_check(n_samples: int, threads: int):

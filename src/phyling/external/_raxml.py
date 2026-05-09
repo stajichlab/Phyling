@@ -61,6 +61,8 @@ class Raxml(TreeToolWrapper):
         super().__init__(file, output, seqtype=seqtype, model=model, seed=seed, threads=threads, threads_max=threads_max)
 
     def _post_run(self):
+        if not self._output:
+            raise RuntimeError("No output file was generated.")
         model_file = self._output.with_suffix(".bestModel")
 
         with RaxmlHandler(model_file) as fi:
@@ -93,7 +95,7 @@ class Raxml(TreeToolWrapper):
             "--prefix",
             str(output),
             "--model",
-            str(model),
+            model,
             "--threads",
             str(threads) if threads >= 1 else f"auto{{{threads_max}}}",
         ]

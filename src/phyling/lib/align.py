@@ -10,7 +10,14 @@ import traceback
 from functools import partial
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
-from typing import Any, Iterator, Literal, NamedTuple, Sequence, overload
+from typing import Any, BinaryIO, Iterable, Iterator, Literal, NamedTuple, Sequence, cast, overload
+
+try:
+    # Try the modern location first
+    from typing import Self
+except ImportError:
+    # Fallback to the extension library
+    from typing_extensions import Self
 
 from Bio import SeqIO
 from Bio.Align import MultipleSeqAlignment
@@ -18,7 +25,7 @@ from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from pyfaidx import Fasta
 from pyhmmer import hmmalign, hmmsearch
-from pyhmmer.easel import Alphabet, DigitalSequence, DigitalSequenceBlock, SequenceFile
+from pyhmmer.easel import AA, DNA, Alphabet, DigitalSequence, DigitalSequenceBlock, SequenceFile
 from pyhmmer.plan7 import HMM, HMMFile
 
 from ..exception import EmptyWarning, SeqtypeError
@@ -38,12 +45,11 @@ __all__ = [
     "bp_mrtrans",
 ]
 logger = logging.getLogger(__name__)
-_shared_hmms = None
 
 _abc.FileWrapperABC.register(HMM)
 
 
-class HMMMarkerSet(_abc.DataListABC[HMM]):
+class HMMMarkerSet(_abc.DataListABC[HMM]):  # type: ignore[type-var]
     """Manage a collection of pyhmmer HMM profiles with optional cutoffs for model-specific bitscore thresholds.
 
     Provides methods to initialize, access, and manipulate HMM data.
@@ -52,45 +58,38 @@ class HMMMarkerSet(_abc.DataListABC[HMM]):
     _bound_class = HMM
 
     @overload
-    def __init__(self, data: Sequence[str | Path | HMM]) -> None: ...
-
+    def __init__(self, data: str | Path) -> None: ...
     @overload
-    def __init__(self, data: Sequence[str | Path | HMM], cutoff_file: str | Path) -> None: ...
-
-    def __init__(
-        self,
-        data: Sequence[str | Path | HMM] | None = None,
-        cutoff_file: str | Path | None = None,
-    ) -> None:
+    def __init__(self, data: str | Path, cutoff_file: str | Path) -> None: ...
+    def __init__(self, data: str | Path | None = None, cutoff_file: str | Path | None = None) -> None:
         """Initialize the HMMMarkerSet with data and optional cutoffs.
 
         Args:
-            data (Sequence[str | Path | HMM] | None): HMM profiles or paths to load.
+            data (str | Path | None): HMM profiles or paths to load.
             cutoff_file (str | Path | None): File with model-specific bitscore cutoffs.
 
         Raises:
             TypeError: If an item cannot be converted to an HMM.
             RuntimeError: If the cutoff_file is not a valid file.
         """
+        data_tuple = ()
         if isinstance(data, str):
-            data: Path = Path(data)
+            data = Path(data)
         if isinstance(data, Path):
             if data.is_dir():
-                data = tuple(data.iterdir())
+                data_tuple = tuple(data.iterdir())
             else:
-                data = (data,)
+                data_tuple = (data,)
 
         self._data: list[HMM] = []
-        if data:
-            for d in data:
-                if isinstance(d, (str, Path)):
-                    with HMMFile(d) as hmm_profile:
-                        profile_name = Path(d).stem
-                        d: HMM = hmm_profile.read()
-                        d.name = profile_name
-                if not isinstance(d, self._bound_class):
-                    raise TypeError(f"{type(d).__qualname__} cannot be converted to {self._bound_class.__qualname__}.")
-                self.append(d)
+        if data_tuple:
+            for d in data_tuple:
+                with HMMFile(d) as hmm_profile:  # type: ignore[type-var]
+                    profile_name = d.stem
+                    hmm = hmm_profile.read()
+                    if hmm:
+                        hmm.name = profile_name
+                        self.append(hmm)
 
         if cutoff_file:
             cutoff_file = Path(cutoff_file)
@@ -107,14 +106,11 @@ class HMMMarkerSet(_abc.DataListABC[HMM]):
 
     @overload
     def __getitem__(self, key: int) -> HMM: ...
-
     @overload
     def __getitem__(self, key: str) -> HMM: ...
-
     @overload
-    def __getitem__(self, key: slice) -> HMMMarkerSet: ...
-
-    def __getitem__(self, key: int | slice | str) -> HMM | HMMMarkerSet:
+    def __getitem__(self, key: slice) -> Self: ...
+    def __getitem__(self, key: int | slice | str) -> HMM | Self:
         """Retrieve HMM profile(s) by index or name.
 
         Args:
@@ -154,19 +150,16 @@ class HMMMarkerSet(_abc.DataListABC[HMM]):
         return True
 
     @overload
-    def set_cutoffs(self, cutoffs_dict: dict[str, float]) -> None: ...
-
+    def set_cutoffs(self) -> None: ...
     @overload
-    def set_cutoffs(self, **kwargs) -> None: ...
-
-    def set_cutoffs(self, cutoffs_dict: dict[str, float] | None = None, /, **kwargs) -> None:
+    def set_cutoffs(self, cutoffs_dict: dict[str, float]) -> None: ...
+    def set_cutoffs(self, cutoffs_dict: dict[str, float] | None = None) -> None:
         """Set model-specific bitscore cutoffs for HMM profiles.
 
         Args:
             cutoffs_dict (dict[str, float] | None): Dictionary of cutoffs.
-            **kwargs: Additional cutoff values by profile name.
         """
-        cutoffs_dict = dict(cutoffs_dict, **kwargs)
+        cutoffs_dict = dict(cutoffs_dict) if cutoffs_dict is not None else {}
         for hmm, cutoff in cutoffs_dict.items():
             self[hmm].cutoffs.trusted = (float(cutoff),) * 2
 
@@ -179,11 +172,9 @@ class SampleSeqs(_abc.SeqFileWrapperABC):
 
     @overload
     def __init__(self, file: str | Path, *, seqtype: Literal["dna", "pep", "AUTO"] = "AUTO") -> None: ...
-
     @overload
     def __init__(self, file: str | Path, name: str, *, seqtype: Literal["dna", "pep", "AUTO"] = "AUTO") -> None: ...
-
-    def __init__(self, file: str | Path, name: str = None, *, seqtype: Literal["dna", "pep", "AUTO"] = "AUTO") -> None:
+    def __init__(self, file: str | Path, name: str | None = None, *, seqtype: Literal["dna", "pep", "AUTO"] = "AUTO") -> None:
         """Initialize a SampleSeqs object.
 
         Initialize with a path of a fasta file and a representative name (optional). The basename of the file will be used as the
@@ -237,17 +228,17 @@ class SampleSeqs(_abc.SeqFileWrapperABC):
             SeqTypes.RNA: Alphabet.rna(),
         }
         f = gzip.open(self.file) if is_gzip_file(self.file) else open(self.file, "rb")
-        with SequenceFile(f, digital=True, alphabet=seqtype_conversion[self.seqtype]) as sf:
+        with SequenceFile(cast(BinaryIO, f), digital=True, alphabet=seqtype_conversion[self.seqtype]) as sf:
             seqblock: DigitalSequenceBlock = sf.read_block()
         f.close()
 
         if self.seqtype == SeqTypes.PEP:
             logger.debug("%s contains %s sequences.", self.file, self.seqtype)
-            self._process_pep_seqs(seqblock)
+            self._process_pep_seqs(cast("DigitalSequenceBlock[AA]", seqblock))
 
         elif self.seqtype == SeqTypes.DNA:
             logger.debug("%s contains %s sequences.", self.file, self.seqtype)
-            self._process_cds_seqs(seqblock)
+            self._process_cds_seqs(cast("DigitalSequenceBlock[DNA]", seqblock))
 
         else:
             raise SeqtypeError(f"{self.file} contains rna sequences, which is not supported. Please convert them to dna first.")
@@ -269,24 +260,25 @@ class SampleSeqs(_abc.SeqFileWrapperABC):
         """
         return run_hmmsearch(self, hmms, evalue=evalue, threads=threads)
 
-    def _guess_seqtype(self) -> str:
+    def _guess_seqtype(self) -> Literal["dna", "pep", "rna", "NaN"]:
         """Guess and return the sequence type."""
         f = gzip.open(self.file, "rt") if is_gzip_file(self.file) else open(self.file)
 
         for r in SeqIO.FastaIO.SimpleFastaParser(f):
             seqtype = guess_seqtype(r[1], ignore_failed=True)
             if seqtype:
-                f.close()
-                return seqtype
+                break
+        f.close()
+        return seqtype
 
-    def _process_pep_seqs(self, seqblock: DigitalSequenceBlock) -> None:
+    def _process_pep_seqs(self, seqblock: DigitalSequenceBlock[AA]) -> None:
         """Process the peptide sequences."""
         while seqblock:
             seq = seqblock.pop()
             seq.description = self.name
             self._data.append(seq)
 
-    def _process_cds_seqs(self, seqblock: DigitalSequenceBlock) -> None:
+    def _process_cds_seqs(self, seqblock: DigitalSequenceBlock[DNA]) -> None:
         """Process the CDS sequences.
 
         Logs information about problematic sequences with invalid lengths.
@@ -315,17 +307,25 @@ class SampleList(_abc.SeqDataListABC[SampleSeqs]):
     """A wrapper that stores all the SampleSeqs for an analysis."""
 
     @overload
-    def __init__(self, data: Sequence[str | Path | SampleSeqs], *, seqtype: Literal["dna", "pep", "AUTO"] = "AUTO") -> None: ...
-
+    def __init__(self) -> None: ...
+    @overload
+    def __init__(self, data: Sequence[str | Path | SampleSeqs]) -> None: ...
+    @overload
+    def __init__(self, data: Sequence[str | Path | SampleSeqs], names: Sequence[str]) -> None: ...
+    @overload
+    def __init__(self, data: Sequence[str | Path | SampleSeqs], *, seqtype: Literal["dna", "pep", "AUTO"]) -> None: ...
+    @overload
+    def __init__(
+        self, data: Sequence[str | Path | SampleSeqs], names: Sequence[str], *, seqtype: Literal["dna", "pep", "AUTO"]
+    ) -> None: ...
     @overload
     def __init__(
         self, data: Sequence[str | Path | SampleSeqs], names: Sequence[str], *, seqtype: Literal["dna", "pep", "AUTO"] = "AUTO"
     ) -> None: ...
-
     def __init__(
         self,
-        data: Sequence[str | Path | SampleSeqs] | None = None,
-        names: Sequence[str] | None = None,
+        data: Sequence[str | Path | SampleSeqs] = (),
+        names: Sequence[str] = (),
         *,
         seqtype: Literal["dna", "pep", "AUTO"] = "AUTO",
     ) -> None:
@@ -347,14 +347,11 @@ class SampleList(_abc.SeqDataListABC[SampleSeqs]):
 
     @overload
     def __getitem__(self, key: int) -> SampleSeqs: ...
-
     @overload
     def __getitem__(self, key: str) -> SampleSeqs: ...
-
     @overload
-    def __getitem__(self, key: slice) -> SampleList: ...
-
-    def __getitem__(self, key: int | slice | str) -> SampleSeqs | SampleList:
+    def __getitem__(self, key: slice) -> Self: ...
+    def __getitem__(self, key: int | slice | str) -> SampleSeqs | Self:
         """Retrieves an item or subset of items by name, index, or slice.
 
         Args:
@@ -452,7 +449,7 @@ class SearchHitsManager:
         self._data: list[SearchHit] = []
         self._orthologs: dict[str, list[int]] = {}  # Based on hits
         self._samples: dict[SampleSeqs, list[int]] = {}  # Based on hits
-        self._mfa_dir: tempfile.TemporaryDirectory = None
+        self._mfa_dir: tempfile.TemporaryDirectory | None = None
 
         for hit in hits:
             self.add(hit)
@@ -470,7 +467,7 @@ class SearchHitsManager:
         return type(self).__qualname__ + f"(hits={len(self)}; samples={len(self._samples)}; orthologs={len(self._orthologs)}"
 
     @_abc.check_class
-    def __eq__(self, other: SearchHitsManager) -> bool:
+    def __eq__(self, other: object) -> bool:
         """Check if this manager is equal to another manager.
 
         Args:
@@ -479,18 +476,17 @@ class SearchHitsManager:
         Returns:
             bool: True if the managers are equal, False otherwise.
         """
+        if not isinstance(other, type(self)):
+            return NotImplemented
         return (self._orthologs == other._orthologs) and (self._samples == other._samples)
 
     @overload
     def __getitem__(self, key: int) -> SearchHit: ...
-
     @overload
-    def __getitem__(self, key: slice) -> SearchHitsManager: ...
-
+    def __getitem__(self, key: slice) -> Self: ...
     @overload
-    def __getitem__(self, key: list) -> SearchHitsManager: ...
-
-    def __getitem__(self, key: int | slice | list) -> SearchHit | SearchHitsManager:
+    def __getitem__(self, key: list) -> Self: ...
+    def __getitem__(self, key: int | slice | list) -> SearchHit | Self:
         """Retrieve search hits using an index, slice, or list of indices.
 
         Args:
@@ -552,7 +548,7 @@ class SearchHitsManager:
         self._orthologs.setdefault(hit.hmm, []).append(idx)
         self._samples.setdefault(hit.sample, []).append(idx)
 
-    def update(self, hits: Iterator[SearchHit]) -> None:
+    def update(self, hits: Iterable[SearchHit]) -> None:
         """Update new search hits to the manager.
 
         Args:
@@ -562,7 +558,7 @@ class SearchHitsManager:
             self.add(hit)
 
     @property
-    def samplelist(self) -> SampleList[SampleSeqs]:
+    def samplelist(self) -> SampleList:
         """Get the associated SampleList.
 
         Returns:
@@ -571,7 +567,7 @@ class SearchHitsManager:
         return SampleList(tuple(self._samples.keys()))
 
     @property
-    def orthologs(self) -> dict[str, tuple | Path]:
+    def orthologs(self) -> dict[str, Path]:
         """Get the orthologs.
 
         Returns:
@@ -584,12 +580,10 @@ class SearchHitsManager:
             raise RuntimeError("Please run the load method first.")
 
     @overload
-    def filter(self, min_taxa: int) -> SearchHitsManager: ...
-
+    def filter(self, *, min_taxa: int) -> Self: ...
     @overload
-    def filter(self, drop_samples: Sequence) -> SearchHitsManager: ...
-
-    def filter(self, min_taxa: int = 0, drop_samples: Sequence[str] | None = None) -> SearchHitsManager:
+    def filter(self, *, drop_samples: Sequence) -> Self: ...
+    def filter(self, *, min_taxa: int = 0, drop_samples: Sequence[str] = ()) -> Self:
         """Filter hits by minimum taxa or dropping specific samples.
 
         Args:
@@ -602,8 +596,7 @@ class SearchHitsManager:
         Raises:
             EmptyWarning: If no hits are left after filtering.
         """
-        drop_samples = drop_samples or []
-        drop_samples: set = set(drop_samples)
+        drop_samples = tuple(set(drop_samples))
         selected_idx = [x for x in range(len(self))]
         if min_taxa and drop_samples:
             return self.filter(drop_samples=drop_samples).filter(min_taxa=min_taxa)
@@ -624,7 +617,7 @@ class SearchHitsManager:
             with tempfile.TemporaryDirectory() as faidx_dir:
                 faidx_dir = Path(faidx_dir)
                 msa_dir_path = Path(self._mfa_dir.name)
-                loaded_seqs = [None] * len(self)  # Create a fixed-size list and fill with seqs
+                loaded_seqs: list[SeqRecord] = [None] * len(self)  # type: ignore
                 for sample, indices in self._samples.items():
                     self._to_seqrecord(sample, indices, loaded_seqs, faidx_dir)
                 for hmm, indices in self._orthologs.items():
@@ -688,10 +681,8 @@ class OrthologSeqs(SampleSeqs):
 
     @overload
     def __init__(self, file: str | Path, *, seqtype: Literal["dna", "pep", "AUTO"] = "AUTO") -> None: ...
-
     @overload
     def __init__(self, file: str | Path, name: str, *, seqtype: Literal["dna", "pep", "AUTO"] = "AUTO") -> None: ...
-
     def __init__(self, file: str | Path, name: str | None = None, *, seqtype: Literal["dna", "pep", "AUTO"] = "AUTO") -> None:
         """Initialize a OrthologSeqs object.
 
@@ -713,7 +704,10 @@ class OrthologSeqs(SampleSeqs):
             Load a bgzf compressed cds fasta:
             >>> OrthologSeqs("data/101133at4751.fa.bgzf", "hmm_101133at4751")
         """
-        super().__init__(file, name, seqtype=seqtype)
+        if name:
+            super().__init__(file, name, seqtype=seqtype)
+        else:
+            super().__init__(file, seqtype=seqtype)
 
     def load(self) -> None:
         """Load the sequences for hmmalign.
@@ -721,22 +715,21 @@ class OrthologSeqs(SampleSeqs):
         Raises:
             SeqtypeError: If RNA sequences are detected.
         """
-        self._data_cds = None
+        self._data_cds: list[SeqRecord] = []
         super().load()
 
-    def _process_pep_seqs(self, seqblock: DigitalSequenceBlock) -> None:
+    def _process_pep_seqs(self, seqblock: DigitalSequenceBlock[AA]) -> None:
         """Process the peptide sequences."""
         while seqblock:
             seq = seqblock.pop()
             self._data.append(seq)
 
-    def _process_cds_seqs(self, seqblock: DigitalSequenceBlock) -> None:
+    def _process_cds_seqs(self, seqblock: DigitalSequenceBlock[DNA]) -> None:
         """Process the CDS sequences.
 
         The CDS sequences will being saved to internal attribute _data_cds. Logs information about problematic sequences with
         invalid lengths.
         """
-        self._data_cds = []
         problematic_seqs_name = []
         original_size = len(seqblock)
         while seqblock:
@@ -763,7 +756,7 @@ class OrthologSeqs(SampleSeqs):
             )
             logger.debug("Problematic seqs: %s", ", ".join(problematic_seqs_name))
 
-    def search(self, *args, **kwargs) -> NotImplementedError:
+    def search(self, hmms: HMMMarkerSet, *, evalue: float = 1e-10, threads: int = 1) -> list[SearchHit]:
         """Placeholder for the search method in the superclass.
 
         Raises:
@@ -772,11 +765,9 @@ class OrthologSeqs(SampleSeqs):
         raise NotImplementedError(f"Method is not implemented in {type(self).__qualname__} class.")
 
     @overload
-    def align(self, method: Literal["hmmalign"], *, hmm: HMM): ...
-
+    def align(self, method: Literal["hmmalign"], *, hmm: HMM) -> MultipleSeqAlignment: ...
     @overload
-    def align(self, method: Literal["muscle"], *, threads: int = 1): ...
-
+    def align(self, method: Literal["muscle"], *, threads: int = 1) -> MultipleSeqAlignment: ...
     @_abc.load_data
     def align(
         self,
@@ -809,7 +800,10 @@ class OrthologSeqs(SampleSeqs):
             >>> alignment = ortholog.align(method="muscle", threads=4)
         """
         if method == "hmmalign":
-            pep_msa = run_hmmalign(self, hmm)
+            if hmm:
+                pep_msa = run_hmmalign(self, hmm)
+            else:
+                raise ValueError('hmmalign required "hmm" argument.')
         elif method == "muscle":
             pep_msa = run_muscle(self, threads=threads)
         else:
@@ -825,16 +819,14 @@ class OrthologList(_abc.SeqDataListABC[OrthologSeqs]):
 
     @overload
     def __init__(self, data: Sequence[str | Path | OrthologSeqs], *, seqtype: Literal["dna", "pep", "AUTO"] = "AUTO") -> None: ...
-
     @overload
     def __init__(
         self, data: Sequence[str | Path | OrthologSeqs], names: Sequence[str], *, seqtype: Literal["dna", "pep", "AUTO"] = "AUTO"
     ) -> None: ...
-
     def __init__(
         self,
-        data: Sequence[str | Path | OrthologSeqs] | None = None,
-        names: Sequence[str] | None = None,
+        data: Sequence[str | Path | OrthologSeqs] = (),
+        names: Sequence[str] = (),
         *,
         seqtype: Literal["dna", "pep", "AUTO"] = "AUTO",
     ) -> None:
@@ -842,7 +834,7 @@ class OrthologList(_abc.SeqDataListABC[OrthologSeqs]):
 
         Args:
             data (Sequence[str | Path | OrthologSeqs] | None, optional): A sequence of data items.
-            names (Sequence[str] | None, optional): A sequence of names corresponding to the data items.
+            names (Sequence[str], optional): A sequence of names corresponding to the data items.
             seqtype (Literal["dna", "pep", "AUTO"]): The sequence type of the file. Defaults to AUTO.
 
         Raises:
@@ -856,14 +848,11 @@ class OrthologList(_abc.SeqDataListABC[OrthologSeqs]):
 
     @overload
     def __getitem__(self, key: int) -> OrthologSeqs: ...
-
     @overload
     def __getitem__(self, key: str) -> OrthologSeqs: ...
-
     @overload
-    def __getitem__(self, key: slice) -> OrthologList: ...
-
-    def __getitem__(self, key: int | slice | str) -> OrthologSeqs | OrthologList:
+    def __getitem__(self, key: slice) -> Self: ...
+    def __getitem__(self, key: int | slice | str) -> OrthologSeqs | Self:
         """Retrieves an item or subset of items by name, index, or slice.
 
         Args:
@@ -875,11 +864,17 @@ class OrthologList(_abc.SeqDataListABC[OrthologSeqs]):
         return super().__getitem__(key)
 
     @overload
-    def align(self, method: Literal["hmmalign"], *, hmms: HMMMarkerSet, jobs: int = 1) -> list[MultipleSeqAlignment]: ...
-
+    def align(self, method: Literal["hmmalign"], *, hmms: HMMMarkerSet) -> list[MultipleSeqAlignment]: ...
     @overload
-    def align(self, method: Literal["muscle"], *, jobs: int = 1, threads: int = 1) -> list[MultipleSeqAlignment]: ...
-
+    def align(self, method: Literal["hmmalign"], *, hmms: HMMMarkerSet, jobs: int) -> list[MultipleSeqAlignment]: ...
+    @overload
+    def align(self, method: Literal["hmmalign"], *, hmms: HMMMarkerSet, jobs: int, threads) -> list[MultipleSeqAlignment]: ...
+    @overload
+    def align(self, method: Literal["muscle"]) -> list[MultipleSeqAlignment]: ...
+    @overload
+    def align(self, method: Literal["muscle"], *, jobs: int) -> list[MultipleSeqAlignment]: ...
+    @overload
+    def align(self, method: Literal["muscle"], *, jobs: int, threads: int) -> list[MultipleSeqAlignment]: ...
     def align(
         self,
         method: Literal["hmmalign", "muscle"],
@@ -969,13 +964,13 @@ def run_hmmsearch(sample: SampleSeqs, hmms: HMMMarkerSet, *, evalue: float = 1e-
         >>> hits = run_hmmsearch(sample, hmmset, evalue=1e-5, threads=4)
     """
     if hmms.have_cutoffs(verbose=False):
-        cutoffs_args = {"bit_cutoffs": "trusted"}
+        cutoffs_args: dict[str, Any] = {"bit_cutoffs": "trusted"}
     else:
-        cutoffs_args = {"E": evalue}
+        cutoffs_args: dict[str, Any] = {"E": evalue}
     r = []
     for hits in hmmsearch(hmms, sample, cpus=threads, **cutoffs_args):
         hmm = hits.query.name
-        reported = []
+        reported: list[SearchHit] = []
         idx = 0
         while idx < min(2, len(hits)):
             hit = hits[idx]
@@ -1008,7 +1003,7 @@ def run_hmmalign(ortholog: OrthologSeqs, hmm: HMM) -> MultipleSeqAlignment:
     """
     f = tempfile.NamedTemporaryFile()
     try:
-        hmmalign(hmm, ortholog).write(f, "afa")
+        hmmalign(hmm, ortholog).write(cast(BinaryIO, f), "afa")
         f.seek(0)
         alignment = load_msa(Path(f.name))
         alignment.annotations = {"seqtype": SeqTypes.PEP}
@@ -1053,7 +1048,7 @@ def run_muscle(ortholog: OrthologSeqs, *, threads: int = 1) -> MultipleSeqAlignm
                 "fasta",
             )
             f_pep.seek(0)
-            runner = Muscle(f_pep.name, f_aln.name)
+            runner = Muscle(f_pep.name, f_aln.name, threads=threads)
             try:
                 runner.run()
             except Exception as e:
@@ -1065,7 +1060,7 @@ def run_muscle(ortholog: OrthologSeqs, *, threads: int = 1) -> MultipleSeqAlignm
     return alignment
 
 
-def bp_mrtrans(pep_msa: MultipleSeqAlignment, cds_rec: list[SeqRecord]) -> MultipleSeqAlignment:
+def bp_mrtrans(pep_msa: MultipleSeqAlignment, cds_recs: list[SeqRecord]) -> MultipleSeqAlignment:
     """Transform protein MSA to mRNA/cDNA coordinates.
 
     Args:
@@ -1084,19 +1079,20 @@ def bp_mrtrans(pep_msa: MultipleSeqAlignment, cds_rec: list[SeqRecord]) -> Multi
     codon_gap = codon_size * gap
 
     cds_msa = MultipleSeqAlignment([], annotations={"seqtype": SeqTypes.DNA})
-    for pep_seq, cds_seq in zip(pep_msa, cds_rec):
+    for pep_rec, cds_rec in zip(pep_msa, cds_recs):
+        pep_rec: SeqRecord
         dna_idx = 0
-        dna_align = []
+        dna_align: list[str] = []
         info = {
-            "id": cds_seq.id if hasattr(cds_seq, "id") else pep_seq.id,
-            "name": cds_seq.name if hasattr(cds_seq, "name") else pep_seq.name,
-            "description": cds_seq.description if hasattr(cds_seq, "description") else pep_seq.description,
+            "id": cds_rec.id if hasattr(cds_rec, "id") else pep_rec.id,
+            "name": cds_rec.name if hasattr(cds_rec, "name") else pep_rec.name,
+            "description": cds_rec.description if hasattr(cds_rec, "description") else pep_rec.description,
         }
-        cds_seq: str = str(cds_seq.seq).upper()
-        for align_idx in range(len(pep_seq)):
+        cds_seq: str = str(cds_rec.seq).upper()
+        for align_idx in range(len(pep_rec)):
             codon = cds_seq[dna_idx : dna_idx + codon_size]
 
-            if pep_seq[align_idx] == gap or dna_idx >= len(cds_seq):
+            if pep_rec[align_idx] == gap or dna_idx >= len(cds_seq):
                 dna_align.append(codon_gap)
                 if codon not in stop_codons:
                     continue
@@ -1105,15 +1101,6 @@ def bp_mrtrans(pep_msa: MultipleSeqAlignment, cds_rec: list[SeqRecord]) -> Multi
             dna_idx += codon_size
         cds_msa.append(SeqRecord(Seq(("".join(dna_align))), **info))
     return cds_msa
-
-
-def _init_worker(hmms):
-    """
-    This function sets the global variable in the worker's scope.
-    On Linux with 'fork', this is essentially a pointer to the parent's memory.
-    """
-    global _shared_hmms
-    _shared_hmms = hmms
 
 
 def _search_helper(

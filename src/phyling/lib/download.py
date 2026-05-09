@@ -20,7 +20,7 @@ class BuscoParser(ContextDecorator):
 
     def __init__(self, *cfg_dirs: str | Path) -> None:
         """Initiate the object and download the latest metadata from online database."""
-        self._cfg_dirs = cfg_dirs
+        self._cfg_dirs = [Path(x) for x in cfg_dirs]
         self._online_metadata: dict[str, dict] = {}
         self._local_metadata: dict[str, dict] = {}
         self._get_metadata_online()

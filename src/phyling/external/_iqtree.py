@@ -44,8 +44,7 @@ class ModelFinder(BinaryWrapper):
         seed: int = -1,
         threads: int = 1,
         threads_max: int = AVAIL_CPUS,
-    ): ...
-
+    ) -> None: ...
     @overload
     def __init__(
         self,
@@ -57,8 +56,7 @@ class ModelFinder(BinaryWrapper):
         seed: int = -1,
         threads: int = 1,
         threads_max: int = AVAIL_CPUS,
-    ): ...
-
+    ) -> None: ...
     def __init__(
         self,
         file: str | Path,
@@ -70,12 +68,14 @@ class ModelFinder(BinaryWrapper):
         seed: int = -1,
         threads: int = -1,
         threads_max: int = AVAIL_CPUS,
-    ):
+    ) -> None:
         super().__init__(
             file, output, partition_file, seqtype=seqtype, method=method, seed=seed, threads=threads, threads_max=threads_max
         )
 
     def _post_run(self) -> None:
+        if not self._output:
+            raise RuntimeError("No output file was generated.")
         if self._output.suffix == ".nex":  # partitioning analysis
             if self._method == "raxml":
                 with NexusHandler(self._output) as fi, RaxmlHandler(self._output.with_suffix(""), mode="w") as fo:
@@ -86,6 +86,7 @@ class ModelFinder(BinaryWrapper):
             else:
                 self._result = self._output
         else:
+            model, params = [], []
             with gzip.open(self._output, "rt") as f:
                 for line in f.read().strip("\n").split("\n"):
                     best_model_prefix = "best_model_BIC: "
@@ -121,17 +122,17 @@ class ModelFinder(BinaryWrapper):
             partition_file = Path(partition_file)
         method_idx = list(TreeMethods).index(TreeMethods[method.upper()])
         if seqtype == SeqTypes.DNA:
-            seqtype = "DNA"
+            seqtype_ = "DNA"
             # Find the support models for each tool and map to the name in IQTree format
             mset = ",".join(DNA_MODELS[DNA_MODELS[:, method_idx] != "", 2])
         elif seqtype == SeqTypes.PEP:
-            seqtype = "AA"
+            seqtype_ = "AA"
             mset = ",".join(PEP_MODELS[PEP_MODELS[:, method_idx] != "", 2])
         else:
-            seqtype = None
+            seqtype_ = None
             mset = ",".join(ALL_MODELS[ALL_MODELS[:, method_idx] != "", 2])
         self._method = method
-        return super()._params_check(partition_file, seqtype=seqtype, mset=mset, **kwargs)
+        return super()._params_check(partition_file, seqtype=seqtype_, mset=mset, **kwargs)
 
     def _construct_cmd(
         self,
@@ -184,17 +185,20 @@ class Iqtree(TreeToolWrapper):
         seed: int = -1,
         threads: int = -1,
         threads_max: int = AVAIL_CPUS,
-    ):
+    ) -> None:
         super().__init__(file, output, seqtype=seqtype, model=model, seed=seed, threads=threads, threads_max=threads_max)
 
-    def _post_run(self):
+    def _post_run(self) -> None:
+        if not self._output:
+            raise RuntimeError("No output file was generated.")
         model_file = self._output.with_suffix(".best_model.nex")
 
         if model_file.is_file():
-            self._model = model_file
+            self._model = str(model_file)
         else:
             with open(self._output.with_suffix(".iqtree")) as f:
-                self._model = re.search(r"alisim simulated_MSA .* (\-m) \"(.*)\" ", f.read())[2]
+                if match := re.search(r"alisim simulated_MSA .* (\-m) \"(.*)\" ", f.read()):
+                    self._model = match[2]
 
     def _construct_cmd(
         self,
@@ -223,9 +227,9 @@ class Iqtree(TreeToolWrapper):
         if seed >= 0:
             self._cmd.extend(["--seed", str(seed)])
         if Path(model).is_file():
-            self._cmd.extend(["-p", str(model)])
+            self._cmd.extend(["-p", model])
         else:
-            self._cmd.extend(["-m", str(model)])
+            self._cmd.extend(["-m", model])
 
         self._output = Path(f"{output}.treefile")
 

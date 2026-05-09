@@ -5,8 +5,16 @@ from __future__ import annotations
 import textwrap
 from abc import ABC, abstractmethod
 from functools import wraps
+from itertools import zip_longest
 from pathlib import Path
-from typing import Callable, Generic, Iterator, Literal, Sequence, TypeVar, overload
+from typing import Callable, Generic, Iterator, Literal, MutableSequence, Protocol, Sequence, TypeVar, overload
+
+try:
+    # Try the modern location first
+    from typing import Concatenate, ParamSpec, Self
+except ImportError:
+    # Fallback to the extension library
+    from typing_extensions import Concatenate, ParamSpec, Self
 
 from ..exception import SeqtypeError
 from . import SeqTypes
@@ -19,15 +27,26 @@ __all__ = [
     "SeqDataListABC",
 ]
 
-_R = TypeVar("Return")
-_C = TypeVar("Callable", bound=Callable[..., _R])
-_FW = TypeVar("FileWrapperABC", bound="FileWrapperABC")
-_SFW = TypeVar("SeqFileWrapperABC", bound="SeqFileWrapperABC")
-_DL = TypeVar("DataListABC", bound="DataListABC")
-_SDL = TypeVar("SeqDataListABC", bound="SeqDataListABC")
+
+_T = TypeVar("_T")
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+_FileWrapperABC = TypeVar("_FileWrapperABC", bound="FileWrapperABC")
+_SeqFileWrapperABC = TypeVar("_SeqFileWrapperABC", bound="SeqFileWrapperABC")
+_DataListABC = TypeVar("_DataListABC", bound="DataListABC")
 
 
-def check_class(func: _C) -> _C:
+class SupportsSeqType(Protocol):
+    """Structural type for any object with a seqtype attribute."""
+
+    @property
+    def seqtype(self) -> Literal["dna", "rna", "pep", "NaN"]: ...
+
+
+_SupportsSeqType = TypeVar("_SupportsSeqType", bound=SupportsSeqType)
+
+
+def check_class(func: Callable[_P, _R]) -> Callable[_P, _R]:
     """A decorator to ensure that the `other` argument is an instance of the same class as `instance`.
 
     Args:
@@ -46,16 +65,21 @@ def check_class(func: _C) -> _C:
     """
 
     @wraps(func)
-    def wrapper(instance, other):
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
         """Validate both objects are the same type."""
-        if not isinstance(other, type(instance)):
-            raise TypeError(f"Cannot operates with a different type. Expect a {type(instance)} object but got a {type(other)}.")
-        return func(instance, other)
+        if len(args) >= 2:
+            if not isinstance(args[1], type(args[0])):
+                raise TypeError(
+                    f"Cannot operates with a different type. Expect a {type(args[1])} object but got a {type(args[0])}."
+                )
+        return func(*args, **kwargs)
 
     return wrapper
 
 
-def check_loaded(func: _C) -> _C:
+def check_loaded(
+    func: Callable[Concatenate[_FileWrapperABC, _P], _R],
+) -> Callable[Concatenate[_FileWrapperABC, _P], _R]:
     """A decorator to ensure that the data has been loaded before calling the decorated method.
 
     Args:
@@ -74,7 +98,7 @@ def check_loaded(func: _C) -> _C:
     """
 
     @wraps(func)
-    def wrapper(instance: _FW, *args, **kwargs):
+    def wrapper(instance: _FileWrapperABC, *args: _P.args, **kwargs: _P.kwargs) -> _R:
         """Validate whether the data has been loaded before executing the function."""
         if CheckAttrs.is_none(instance, "_data"):
             raise RuntimeError("Data is not loaded yet. Please run the load method to load it first.")
@@ -83,7 +107,9 @@ def check_loaded(func: _C) -> _C:
     return wrapper
 
 
-def load_data(func: _C) -> _C:
+def load_data(
+    func: Callable[Concatenate[_FileWrapperABC | _DataListABC, _P], _R],
+) -> Callable[Concatenate[_FileWrapperABC | _DataListABC, _P], _R]:
     """A decorator to ensure that data is loaded before executing a method and unloaded afterward if it was not loaded initially.
 
     This decorator checks whether the `instance` object has its data loaded by evaluating `instance._data`. If the data is already
@@ -106,9 +132,9 @@ def load_data(func: _C) -> _C:
     """
 
     @wraps(func)
-    def wrapper(instance: _FW | _DL, *args, **kwargs):
+    def wrapper(instance: _FileWrapperABC | _DataListABC, *args: _P.args, **kwargs: _P.kwargs) -> _R:
         """Validate the data is loaded before executing the function and unload it afterward if it was not loaded initially."""
-        was_loaded = instance._data is not None
+        was_loaded = instance._data
         if not was_loaded:
             instance.load()
         try:
@@ -121,38 +147,13 @@ def load_data(func: _C) -> _C:
     return wrapper
 
 
-def check_seqtype(func: _C) -> _C:
-    """A decorator to ensure that `instance` and `other` represent the same sequence type.
-
-    This decorator checks if the `seqtype` attributes of `self` and `other` are identical before executing the wrapped function.
-    If they differ, a `SeqtypeError` is raised.
-
-    Args:
-        func (Callable): The function to be wrapped, which must take `instance` and `other` as arguments.
-
-    Returns:
-        Callable: A wrapped function that enforces `seqtype` compatibility between `instance` and `other`.
-
-    Raises:
-        SeqtypeError: If `instance.seqtype` and `other.seqtype` are not identical.
-
-    Example:
-        @check_seqtype
-        def combine_sequences(self, other):
-            ...
-    """
-
-    @wraps(func)
-    def wrapper(instance: _SFW | _SDL, other: _SFW | _SDL):
-        """Validate both objects represent the same sequence type."""
-        if not other.seqtype == instance.seqtype:
-            raise SeqtypeError("Items represent different seqtypes.")
-        return func(instance, other)
-
-    return wrapper
+def check_seqtype(instance: _SupportsSeqType, other: _SupportsSeqType) -> None:
+    """Validate both objects represent the same sequence type."""
+    if not other.seqtype == instance.seqtype:
+        raise SeqtypeError("Items represent different seqtypes.")
 
 
-def _add_seqtypes(x: _SFW | _SDL, y: _SFW | _SDL):
+def _add_seqtypes(x: _SupportsSeqType, y: _SupportsSeqType) -> Literal["dna", "rna", "pep", "NaN"]:
     """Determine the seqtype for the combined items x and y.
 
     Args:
@@ -176,7 +177,7 @@ def _add_seqtypes(x: _SFW | _SDL, y: _SFW | _SDL):
     raise SeqtypeError("Items represent different seqtypes.")
 
 
-def list_repr_wrapper(data: Iterator) -> str:
+def list_repr_wrapper(data: list[_T]) -> str:
     """Format an iterator of data into a concise, multiline string representation.
 
     This function converts each element of the iterator to a string and limits the output to the first 5 and last 5 elements if
@@ -204,11 +205,11 @@ def list_repr_wrapper(data: Iterator) -> str:
          23,
          24]
     """
-    data = [str(d) for d in data]
-    if len(data) > 20:
-        data = data[:5] + ["..."] + data[-5:]
-    data = ",\n".join([textwrap.indent(line, prefix=" ") for line in data]).lstrip(" ")
-    return f"[{data}]"
+    str_data = [str(d) for d in data]
+    if len(str_data) > 20:
+        str_data = str_data[:5] + ["..."] + str_data[-5:]
+    str_data = ",\n".join([textwrap.indent(line, prefix=" ") for line in str_data]).lstrip(" ")
+    return f"[{str_data}]"
 
 
 class FileWrapperABC(ABC):
@@ -225,12 +226,6 @@ class FileWrapperABC(ABC):
 
     __slots__ = ("_file", "_checksum", "_name", "_data")
 
-    @overload
-    def __init__(self, file: str | Path) -> None: ...
-
-    @overload
-    def __init__(self, file: str | Path, name: str) -> None: ...
-
     def __init__(self, file: str | Path, name: str | None = None) -> None:
         """Initialize the object with a file path and an representative name.
 
@@ -244,7 +239,7 @@ class FileWrapperABC(ABC):
         """
         self.file = file
         self.name = name
-        self._data = None
+        self._data: MutableSequence = []
 
     def __repr__(self) -> str:
         """Return a string representation of the object.
@@ -255,7 +250,7 @@ class FileWrapperABC(ABC):
         return f"{type(self).__qualname__}({self.name})"
 
     @check_class
-    def __gt__(self, other: _FW) -> bool:
+    def __gt__(self, other: Self) -> bool:
         """Compare if the current object is larger (posterior) than another object.
 
         Args:
@@ -264,10 +259,10 @@ class FileWrapperABC(ABC):
         Returns:
             bool: True if the current object's name is larger, otherwise False.
         """
-        return str(self.name) > str(other.name)
+        return self.name > other.name
 
     @check_class
-    def __ge__(self, other: _FW) -> bool:
+    def __ge__(self, other: Self) -> bool:
         """Compare if the current object is larger than or equal to another object.
 
         Args:
@@ -276,10 +271,10 @@ class FileWrapperABC(ABC):
         Returns:
             bool: True if the current object's name is larger or equal, otherwise False.
         """
-        return str(self.name) >= str(other.name)
+        return self.name >= other.name
 
     @check_class
-    def __lt__(self, other: _FW) -> bool:
+    def __lt__(self, other: Self) -> bool:
         """Compare if the current object is smaller (prior) than another object.
 
         Args:
@@ -288,10 +283,10 @@ class FileWrapperABC(ABC):
         Returns:
             bool: True if the current object's name is smaller, otherwise False.
         """
-        return str(self.name) < str(other.name)
+        return self.name < other.name
 
     @check_class
-    def __le__(self, other: _FW) -> bool:
+    def __le__(self, other: Self) -> bool:
         """Compare if the current object is smaller than or equal to another object.
 
         Args:
@@ -300,10 +295,9 @@ class FileWrapperABC(ABC):
         Returns:
             bool: True if the current object's name is smaller or equal, otherwise False.
         """
-        return str(self.name) <= str(other.name)
+        return self.name <= other.name
 
-    @check_class
-    def __eq__(self, other: _FW) -> bool:
+    def __eq__(self, other: object) -> bool:
         """Check if the current object is equal to another object.
 
         Args:
@@ -312,6 +306,8 @@ class FileWrapperABC(ABC):
         Returns:
             bool: True if the objects have the same name, otherwise False.
         """
+        if not isinstance(other, type(self)):
+            return NotImplemented
         return self.name == other.name
 
     def __hash__(self) -> int:
@@ -361,19 +357,19 @@ class FileWrapperABC(ABC):
         return self._checksum
 
     @abstractmethod
-    def load(self):
+    def load(self) -> None:
         """Load the file content.
 
         This method must be implemented by subclasses to handle the specific logic for loading files.
         """
         ...
 
-    def unload(self):
+    def unload(self) -> None:
         """Clear the loaded content from memory.
 
-        This resets the `_data` attribute to `None`.
+        This resets the `_data` attribute to empty list.
         """
-        self._data = None
+        self._data = []
 
 
 class SeqFileWrapperABC(FileWrapperABC):
@@ -390,12 +386,7 @@ class SeqFileWrapperABC(FileWrapperABC):
     """
 
     __slots__ = ("_seqtype",)
-
-    @overload
-    def __init__(self, file: str | Path, *, seqtype: Literal["dna", "pep", "AUTO"] = "AUTO") -> None: ...
-
-    @overload
-    def __init__(self, file: str | Path, name: str, *, seqtype: Literal["dna", "pep", "AUTO"] = "AUTO") -> None: ...
+    __hash__ = FileWrapperABC.__hash__
 
     def __init__(self, file: str | Path, name: str | None = None, *, seqtype: Literal["dna", "pep", "AUTO"] = "AUTO") -> None:
         """Initialize the object with a file path and an representative name.
@@ -427,8 +418,7 @@ class SeqFileWrapperABC(FileWrapperABC):
         """
         return super().__repr__()[:-1] + f"; seqtype={self.seqtype})"
 
-    @check_seqtype
-    def __gt__(self, other: _SFW) -> bool:
+    def __gt__(self, other: Self) -> bool:
         """Compare if the current object is larger (posterior) than another object.
 
         Args:
@@ -440,10 +430,10 @@ class SeqFileWrapperABC(FileWrapperABC):
         Raises:
             SeqtypeError: If `instance.seqtype` and `other.seqtype` are not identical.
         """
+        check_seqtype(self, other)
         return super().__gt__(other)
 
-    @check_seqtype
-    def __ge__(self, other: _SFW) -> bool:
+    def __ge__(self, other: Self) -> bool:
         """Compare if the current object is larger than or equal to another object.
 
         Args:
@@ -455,10 +445,10 @@ class SeqFileWrapperABC(FileWrapperABC):
         Raises:
             SeqtypeError: If `instance.seqtype` and `other.seqtype` are not identical.
         """
+        check_seqtype(self, other)
         return super().__ge__(other)
 
-    @check_seqtype
-    def __lt__(self, other: _SFW) -> bool:
+    def __lt__(self, other: Self) -> bool:
         """Compare if the current object is smaller (prior) than another object.
 
         Args:
@@ -470,10 +460,10 @@ class SeqFileWrapperABC(FileWrapperABC):
         Raises:
             SeqtypeError: If `instance.seqtype` and `other.seqtype` are not identical.
         """
+        check_seqtype(self, other)
         return super().__lt__(other)
 
-    @check_seqtype
-    def __le__(self, other: _SFW) -> bool:
+    def __le__(self, other: Self) -> bool:
         """Compare if the current object is smaller than or equal to another object.
 
         Args:
@@ -485,10 +475,10 @@ class SeqFileWrapperABC(FileWrapperABC):
         Raises:
             SeqtypeError: If `instance.seqtype` and `other.seqtype` are not identical.
         """
+        check_seqtype(self, other)
         return super().__le__(other)
 
-    @check_seqtype
-    def __eq__(self, other: _SFW) -> bool:
+    def __eq__(self, other: object) -> bool:
         """Check if the current object is equal to another object.
 
         Args:
@@ -500,13 +490,13 @@ class SeqFileWrapperABC(FileWrapperABC):
         Raises:
             SeqtypeError: If `instance.seqtype` and `other.seqtype` are not identical.
         """
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        check_seqtype(self, other)
         return super().__eq__(other)
 
-    def __hash__(self):
-        return super().__hash__()
-
     @property
-    def seqtype(self) -> str:
+    def seqtype(self) -> Literal["dna", "pep", "rna", "NaN"]:
         """Get the sequence type of the file.
 
         Returns:
@@ -515,7 +505,7 @@ class SeqFileWrapperABC(FileWrapperABC):
         return self._seqtype
 
     @abstractmethod
-    def _guess_seqtype(self) -> str:
+    def _guess_seqtype(self) -> Literal["dna", "pep", "rna", "NaN"]:
         """Guess the sequence type of the file.
 
         This method must be implemented by subclasses to handle the specific logic for guessing sequence type.
@@ -523,7 +513,7 @@ class SeqFileWrapperABC(FileWrapperABC):
         ...
 
 
-class DataListABC(ABC, Generic[_FW]):
+class DataListABC(ABC, Generic[_FileWrapperABC]):
     """A list-like abstract base class providing partial list methods for managing FileWrapperABC objects and their associated
     metadata.
 
@@ -534,46 +524,36 @@ class DataListABC(ABC, Generic[_FW]):
     """
 
     __slots__ = ("_data",)
-    _bound_class: type[_FW]
+    _bound_class: type[_FileWrapperABC]
 
     @overload
     def __init__(self) -> None: ...
-
     @overload
-    def __init__(self, data: Sequence[str | Path | _FW]) -> None: ...
-
+    def __init__(self, data: Sequence[str | Path | _FileWrapperABC]) -> None: ...
     @overload
-    def __init__(self, data: Sequence[str | Path | _FW], names: Sequence[str]) -> None: ...
-
-    """Initializes the object and stores data into a list.
-
-    Args:
-        data (Sequence[str | Path | FileWrapperABC]): A sequence of data items.
-        names (Sequence[str]): A sequence of names corresponding to the data items.
-    """
-
-    def __init__(
-        self, data: Sequence[str | Path | _FW] | None = None, names: Sequence[str] | None = None, *args, **kwargs
-    ) -> None:
+    def __init__(self, data: Sequence[str | Path | _FileWrapperABC], names: Sequence[str], *args, **kwargs) -> None: ...
+    def __init__(self, data: Sequence[str | Path | _FileWrapperABC] = (), names: Sequence[str] = (), *args, **kwargs) -> None:
         """Initializes the object and stores data into a list.
 
         Args:
-            data (Sequence[str | Path | FileWrapperABC] | None, optional): A sequence of data items.
-            names (Sequence[str] | None, optional): A sequence of names corresponding to the data items.
+            data (Sequence[str | Path | FileWrapperABC], optional): A sequence of data items.
+            names (Sequence[str], optional): A sequence of names corresponding to the data items.
 
         Raises:
             RuntimeError: If names are provided but data is not.
             TypeError: If a data item cannot be converted to the bound class.
             KeyError: If the item already exists.
         """
-        self._data: list[_FW] = []
+        self._data: list[_FileWrapperABC] = []
+
+        if names and not data:
+            raise RuntimeError("Received no data with names specified.")
+
         if data:
-            if names:
-                if len(data) != len(names):
-                    raise RuntimeError("Data and names have different length.")
-            else:
-                names = (None,) * len(data)
-            for d, name in zip(data, names):
+            if names and len(data) != len(names):
+                raise RuntimeError("Data and names have different length.")
+
+            for d, name in zip_longest(data, names or []):
                 if isinstance(d, (str, Path)):
                     d = self._bound_class(d, name, *args, **kwargs)
                 if not isinstance(d, self._bound_class):
@@ -599,7 +579,7 @@ class DataListABC(ABC, Generic[_FW]):
         """
         return len(self._data)
 
-    def __iter__(self) -> Iterator[_FW]:
+    def __iter__(self) -> Iterator[_FileWrapperABC]:
         """Returns an iterator over the items in the object.
 
         Returns:
@@ -608,7 +588,7 @@ class DataListABC(ABC, Generic[_FW]):
         return iter(self._data)
 
     @check_class
-    def __eq__(self: _DL, other: _DL) -> bool:
+    def __eq__(self, other: object) -> bool:
         """Checks if two objects have the same set of names.
 
         Args:
@@ -620,9 +600,12 @@ class DataListABC(ABC, Generic[_FW]):
         Raises:
             TypeError: If `other` is not an instance of the same class as `self`.
         """
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
         return set(self.names) == set(other.names)
 
-    def __contains__(self, item: _FW) -> bool:
+    def __contains__(self, item: str | _FileWrapperABC) -> bool:
         """Checks if an item is present in the object.
 
         Args:
@@ -643,15 +626,12 @@ class DataListABC(ABC, Generic[_FW]):
         return name in self.names
 
     @overload
-    def __getitem__(self, key: str) -> _FW: ...
-
+    def __getitem__(self, key: str) -> _FileWrapperABC: ...
     @overload
-    def __getitem__(self, key: int) -> _FW: ...
-
+    def __getitem__(self, key: int) -> _FileWrapperABC: ...
     @overload
-    def __getitem__(self: _DL, key: slice) -> _DL: ...
-
-    def __getitem__(self: _DL, key: str | int | slice) -> _FW | _DL:
+    def __getitem__(self, key: slice) -> Self: ...
+    def __getitem__(self, key: str | int | slice) -> _FileWrapperABC | Self:
         """Retrieves an item or subset of items by name, index, or slice.
 
         Args:
@@ -669,7 +649,7 @@ class DataListABC(ABC, Generic[_FW]):
         else:
             return self._data[key]
 
-    def __add__(self: _DL, other: _DL) -> _DL:
+    def __add__(self, other: Self) -> Self:
         """Concatenates two DataListABC objects.
 
         Args:
@@ -681,7 +661,7 @@ class DataListABC(ABC, Generic[_FW]):
         return self.__class__(self._data + other._data, self.names + other.names)
 
     @property
-    def files(self) -> tuple[Path]:
+    def files(self) -> tuple[Path, ...]:
         """Returns the file paths in pathlib.Path format.
 
         Returns:
@@ -690,7 +670,7 @@ class DataListABC(ABC, Generic[_FW]):
         return tuple(d.file for d in self)
 
     @property
-    def names(self) -> tuple[str]:
+    def names(self) -> tuple[str, ...]:
         """Returns the representative names of the files.
 
         Returns:
@@ -699,7 +679,7 @@ class DataListABC(ABC, Generic[_FW]):
         return tuple(d.name for d in self)
 
     @property
-    def checksums(self) -> dict[int, _FW]:
+    def checksums(self) -> dict[int, _FileWrapperABC]:
         """Returns a dictionary mapping sample CRC checksums to itself.
 
         Returns:
@@ -717,7 +697,7 @@ class DataListABC(ABC, Generic[_FW]):
         for d in self:
             d.unload()
 
-    def append(self, item: _FW) -> None:
+    def append(self, item: _FileWrapperABC) -> None:
         """Adds a new item to the list after validation.
 
         Args:
@@ -730,7 +710,7 @@ class DataListABC(ABC, Generic[_FW]):
         self._before_append_validate(item)
         self._data.append(item)
 
-    def extend(self: _DL, other: _DL) -> None:
+    def extend(self, other: Self) -> None:
         """Extends the list by appending items from another DataListABC object.
 
         Args:
@@ -739,7 +719,7 @@ class DataListABC(ABC, Generic[_FW]):
         for item in other:
             self.append(item)
 
-    def pop(self, i: int = -1) -> _FW:
+    def pop(self, i: int = -1) -> _FileWrapperABC:
         """Removes and returns the item at the given index.
 
         Args:
@@ -748,7 +728,7 @@ class DataListABC(ABC, Generic[_FW]):
         Returns:
             FileWrapperABC: The removed item.
         """
-        item: _FW = self._data.pop(i)
+        item: _FileWrapperABC = self._data.pop(i)
         return item
 
     def sort(self, /, *args, **kwargs) -> None:
@@ -760,7 +740,7 @@ class DataListABC(ABC, Generic[_FW]):
         """
         self._data.sort(*args, **kwargs)
 
-    def _before_append_validate(self, item: _FW) -> None:
+    def _before_append_validate(self, item: _FileWrapperABC) -> None:
         """Validates an item before appending it to the list.
 
         Args:
@@ -779,7 +759,7 @@ class DataListABC(ABC, Generic[_FW]):
             raise KeyError(f"{item.name}: Data already exists.")
 
 
-class SeqDataListABC(DataListABC[_SFW]):
+class SeqDataListABC(DataListABC[_SeqFileWrapperABC]):
     """A list-like abstract base class providing partial list methods for managing SeqFileWrapperABC objects and their associated
     metadata.
 
@@ -790,31 +770,34 @@ class SeqDataListABC(DataListABC[_SFW]):
     """
 
     __slots__ = ("_seqtype",)
-    _bound_class: type[_SFW]
+    _bound_class: type[_SeqFileWrapperABC]
 
     @overload
     def __init__(self) -> None: ...
-
-    @overload
-    def __init__(self, data: Sequence[str | Path | _SFW], *, seqtype: Literal["dna", "pep", "AUTO"] = "AUTO") -> None: ...
-
     @overload
     def __init__(
-        self, data: Sequence[str | Path | _SFW], names: Sequence[str], *, seqtype: Literal["dna", "pep", "AUTO"] = "AUTO"
+        self, data: Sequence[str | Path | _SeqFileWrapperABC], *, seqtype: Literal["dna", "pep", "AUTO"] = "AUTO"
     ) -> None: ...
-
+    @overload
     def __init__(
         self,
-        data: Sequence[str | Path | _SFW] | None = None,
-        names: Sequence[str] | None = None,
+        data: Sequence[str | Path | _SeqFileWrapperABC],
+        names: Sequence[str],
+        *,
+        seqtype: Literal["dna", "pep", "AUTO"] = "AUTO",
+    ) -> None: ...
+    def __init__(
+        self,
+        data: Sequence[str | Path | _SeqFileWrapperABC] = (),
+        names: Sequence[str] = (),
         *,
         seqtype: Literal["dna", "pep", "AUTO"] = "AUTO",
     ) -> None:
         """Initializes the object and stores data into a list.
 
         Args:
-            data (Sequence[str | Path | SeqFileWrapperABC] | None, optional): A sequence of data items.
-            names (Sequence[str] | None, optional): A sequence of names corresponding to the data items.
+            data (Sequence[str | Path | SeqFileWrapperABC], optional): A sequence of data items.
+            names (Sequence[str], optional): A sequence of names corresponding to the data items.
             seqtype (Literal["dna", "pep", "AUTO"]): The sequence type of the file. Defaults to AUTO.
 
         Raises:
@@ -823,9 +806,9 @@ class SeqDataListABC(DataListABC[_SFW]):
             KeyError: If the item already exists.
             SeqtypeError: If items represent different sequence types.
         """
-        self._seqtype: str = "NaN"
+        self._seqtype: Literal["dna", "pep", "rna", "NaN"] = "NaN"
         super().__init__(data, names, seqtype=seqtype)
-        self._data: list[_SFW]
+        self._data: list[_SeqFileWrapperABC]
 
     def __repr__(self) -> str:
         """Returns a string representation of the object.
@@ -835,8 +818,7 @@ class SeqDataListABC(DataListABC[_SFW]):
         """
         return type(self).__qualname__ + f"(seqtype={self.seqtype})" + "\n" + list_repr_wrapper(self._data)
 
-    @check_seqtype
-    def __eq__(self: _SDL, other: _SDL) -> bool:
+    def __eq__(self, other: object) -> bool:
         """Checks if two objects have the same set of names.
 
         Args:
@@ -848,10 +830,13 @@ class SeqDataListABC(DataListABC[_SFW]):
         Raises:
             SeqtypeError: If `self` and `other` represent different sequence types.
         """
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        check_seqtype(self, other)
         return super().__eq__(other)
 
     @property
-    def seqtype(self) -> str:
+    def seqtype(self) -> Literal["dna", "pep", "rna", "NaN"]:
         """Retrieves the common sequence type shared by all files in this object.
 
         Returns:
@@ -859,7 +844,7 @@ class SeqDataListABC(DataListABC[_SFW]):
         """
         return self._seqtype
 
-    def pop(self, i: int = -1) -> _SFW:
+    def pop(self, i: int = -1) -> _SeqFileWrapperABC:
         """Removes and returns the item at the given index.
 
         Args:
@@ -873,7 +858,7 @@ class SeqDataListABC(DataListABC[_SFW]):
             self._seqtype = "NaN"
         return item
 
-    def _before_append_validate(self, item: _SFW) -> None:
+    def _before_append_validate(self, item: _SeqFileWrapperABC) -> None:
         """Validates an item before appending it to the list.
 
         Args:
@@ -885,4 +870,5 @@ class SeqDataListABC(DataListABC[_SFW]):
             SeqtypeError: If `self` and `item` represent different sequence types.
         """
         super()._before_append_validate(item)
-        self._seqtype = _add_seqtypes(self, item)
+        seqtype = _add_seqtypes(self, item)
+        self._seqtype = seqtype

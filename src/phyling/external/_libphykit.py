@@ -29,7 +29,12 @@ class Saturation(Phykit_saturation):
         tips = PhykitTree().get_tip_names_from_tree(tree=tree)
         combos = list(itertools.combinations(tips, 2))
 
-        patristic_distances, uncorrected_distances = self.loop_through_combos_and_calculate_pds_and_pis(combos, alignment, tree)
+        patristic_distances, uncorrected_distances = self.loop_through_combos_and_calculate_pds_and_pis(
+            combos,
+            alignment,
+            tree,
+            False,  # type: ignore
+        )
 
         model = LinearRegression(fit_intercept=False)
         model.fit(np.array(patristic_distances).reshape(-1, 1), np.array(uncorrected_distances))

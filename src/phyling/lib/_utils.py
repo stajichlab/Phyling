@@ -11,8 +11,15 @@ import shutil
 import time
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Literal, TypeVar, overload
 from zlib import crc32
+
+try:
+    # Try the modern location first
+    from typing import Concatenate, ParamSpec
+except ImportError:
+    # Fallback to the extension library
+    from typing_extensions import Concatenate, ParamSpec
 
 from Bio import AlignIO
 from Bio.Align import MultipleSeqAlignment
@@ -23,8 +30,11 @@ from .. import AVAIL_CPUS
 from ..exception import BinaryNotFoundError, SeqtypeError
 from . import SeqTypes
 
-_C = TypeVar("Callable", bound=Callable[..., Any])
 logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
 
 
 def get_file_checksum(file: str | Path) -> int:
@@ -64,7 +74,13 @@ def is_gzip_file(file: str | Path) -> bool:
     return magic_number == b"\x1f\x8b"
 
 
-def guess_seqtype(seq: str, ignore_failed=False) -> str | None:
+@overload
+def guess_seqtype(seq: str) -> Literal["dna", "pep", "rna"]: ...
+@overload
+def guess_seqtype(seq: str, ignore_failed: Literal[False]) -> Literal["dna", "pep", "rna"]: ...
+@overload
+def guess_seqtype(seq: str, ignore_failed: Literal[True]) -> Literal["dna", "pep", "rna", "NaN"]: ...
+def guess_seqtype(seq: str, ignore_failed: bool = False) -> Literal["dna", "pep", "rna", "NaN"]:
     """Guess the sequence type (seqtype) for a given sequence string.
 
     This function attempts to identify the type of a given sequence string. It returns "dna" for DNA coding sequences, "rna" for
@@ -85,15 +101,15 @@ def guess_seqtype(seq: str, ignore_failed=False) -> str | None:
     chars.update(seq)
     if "-" in chars:
         chars.remove("-")
-    if chars.issubset(set(NCBICodonTableDNA.nucleotide_alphabet + "N")):
+    if chars.issubset(set(NCBICodonTableDNA.nucleotide_alphabet or "GATC" + "N")):
         return SeqTypes.DNA
-    elif chars.issubset(set(NCBICodonTableRNA.nucleotide_alphabet + "N")):
+    elif chars.issubset(set(NCBICodonTableRNA.nucleotide_alphabet or "GAUC" + "N")):
         return SeqTypes.RNA
     elif chars.issubset(set(NCBICodonTable.protein_alphabet + "BXZ")):
         return SeqTypes.PEP
     else:
         if ignore_failed:
-            return None
+            return "NaN"
         raise SeqtypeError("Cannot determine seqtype. Aborted.")
 
 
@@ -119,7 +135,7 @@ def remove_dirs(*dirs: Path) -> None:
             shutil.rmtree(dir)
 
 
-def check_threads(func: _C) -> _C:
+def check_threads(func: Callable[..., _R]) -> Callable[..., _R]:
     """Decorator to validate and adjust the 'threads' parameter passed to a function.
 
     Ensures the 'threads' parameter is a positive integer and does not exceed the number of available CPU cores. If 'threads'
@@ -137,24 +153,25 @@ def check_threads(func: _C) -> _C:
     """
 
     @wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> _R:
         """Validate and adjust the 'threads' parameter before passing to a function."""
+        args_list = list(args)
         if "threads" in kwargs:
-            kwargs["threads"] = _check(kwargs["threads"])
+            threads_val = kwargs["threads"]
+            kwargs["threads"] = _check(threads_val)
         else:
-            args = list(args)
             import inspect
 
             sig = inspect.signature(func)
-            params = list(sig.parameters)
+            params = list(sig.parameters.keys())
             if "threads" in params:
                 threads_index = params.index("threads")
-                if len(args) > threads_index:
-                    args[threads_index] = _check(args[threads_index])
+                if len(args_list) > threads_index:
+                    args_list[threads_index] = _check(args_list[threads_index])
 
-        return func(*args, **kwargs)
+        return func(*args_list, **kwargs)
 
-    def _check(threads: int) -> int:
+    def _check(threads: object) -> int:
         if not isinstance(threads, int):
             raise TypeError("Argument threads must be an integer.")
         if threads <= 0:
@@ -226,7 +243,7 @@ class Timer:
         return msg
 
     @staticmethod
-    def timer(func: _C) -> _C:
+    def timer(func: Callable[_P, _R]) -> Callable[_P, _R]:
         """Decorator to measure the elapsed time of a function.
 
         Args:
@@ -237,7 +254,7 @@ class Timer:
         """
 
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
             """Measure the elapsed time of a function and output to the logger."""
             t_start = time.monotonic()
             result = func(*args, **kwargs)
@@ -282,7 +299,7 @@ class CheckAttrs:
             """
             self.attrs = attrs
 
-        def __call__(self, func: _C) -> _C:
+        def __call__(self, func: Callable[Concatenate[_T, _P], _R]) -> Callable[Concatenate[_T, _P], _R]:
             """Wrap the target function to perform attribute existence checks before execution.
 
             Args:
@@ -296,7 +313,7 @@ class CheckAttrs:
             """
 
             @wraps(func)
-            def wrapper(instance, *args, **kwargs):
+            def wrapper(instance: _T, *args: _P.args, **kwargs: _P.kwargs) -> _R:
                 """Validate attribute existence and execute the wrapped function."""
                 missing_attrs = CheckAttrs.not_exists(instance, *self.attrs)
                 if missing_attrs:
@@ -328,7 +345,7 @@ class CheckAttrs:
             """
             self.attrs = attrs
 
-        def __call__(self, func: _C) -> _C:
+        def __call__(self, func: Callable[Concatenate[_T, _P], _R]) -> Callable[Concatenate[_T, _P], _R]:
             """Wrap the target function to perform inequality checks before execution.
 
             Args:
@@ -342,7 +359,7 @@ class CheckAttrs:
             """
 
             @wraps(func)
-            def wrapper(instance, *args, **kwargs):
+            def wrapper(instance: _T, *args: _P.args, **kwargs: _P.kwargs) -> _R:
                 """Validate attribute inequality and execute the wrapped function."""
                 none_attrs = CheckAttrs.is_none(instance, *self.attrs)
                 if none_attrs:
@@ -354,7 +371,7 @@ class CheckAttrs:
             return wrapper
 
     @staticmethod
-    def not_exists(instance, *attrs: str) -> list[str]:
+    def not_exists(instance: _T, *attrs: str) -> list[str]:
         """Check if all attributes exist on the given instance.
 
         Args:
@@ -368,7 +385,7 @@ class CheckAttrs:
         return missing_attrs
 
     @staticmethod
-    def is_none(instance, *attrs: str) -> list[str]:
+    def is_none(instance: _T, *attrs: str) -> list[str]:
         """Check if any attributes are None on the given instance.
 
         Args:
@@ -382,7 +399,7 @@ class CheckAttrs:
         return none_attrs
 
     @staticmethod
-    def is_false(instance, *attrs: str) -> list[str]:
+    def is_false(instance: _T, *attrs: str) -> list[str]:
         """Check if any attributes are False on the given instance.
 
         Args:
@@ -416,10 +433,11 @@ def check_binary(prog: str, bins: tuple, conda_url: str | None = None, source_ur
         if bin_path:
             return bin_path
 
+    install_msg = ""
     conda_msg = ""
     source_msg = ""
     if conda_url or source_url:
-        install_msg = " Please install it "
+        install_msg += " Please install it "
     if conda_url:
         conda_msg = f"through 'conda install {conda_url}'"
         if source_url:
