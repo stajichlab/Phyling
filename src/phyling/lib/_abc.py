@@ -329,7 +329,7 @@ class FileWrapperABC(ABC):
         if not file.exists():
             raise FileNotFoundError(f"{self._file}")
         if not file.is_file():
-            raise RuntimeError(f"{self._file} is not a file.")
+            raise FileNotFoundError(f"{self._file} is not a file.")
         self._file = file
         self._checksum = get_file_checksum(self._file)
 

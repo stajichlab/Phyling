@@ -1,24 +1,98 @@
-# from __future__ import annotations
+from __future__ import annotations
 
-# import logging
-# import shutil
-# from copy import deepcopy
-# from pathlib import Path
+from pathlib import Path
 
-# import pytest
-# from Bio.Align import MultipleSeqAlignment
-# from Bio.Seq import Seq
-# from Bio.SeqRecord import SeqRecord
-# from pyhmmer.easel import DigitalSequence, DigitalSequenceBlock
-# from pyhmmer.plan7 import HMM
+import pytest
 
-# from phyling.align._markerset import HMMMarkerSet
-# from phyling.align.align import SearchHitsManager
-# from phyling.align.align import SampleList
-# from phyling.align.align import SampleSeqs
-# from phyling.pipeline.align import main, search, trim
-# import phyling.exception as exception
-# from phyling.pipeline._outputprecheck import AlignPrecheck
+from phyling.lib.align import HMMMarkerSet
+
+BASE_DB = Path("tests/database/poxviridae_odb10")
+HMM_FILE = BASE_DB / "hmms" / "10at10240.hmm"
+HMM_DIR = BASE_DB / "hmms"
+CUTOFF_FILE = BASE_DB / "scores_cutoff"
+
+
+class TestHMMMarkerSet:
+    hmm_file = BASE_DB / "hmms" / "10at10240.hmm"
+
+    def test_init_with_real_single_file(self):
+        """Verify loading a single real HMM file."""
+        assert self.hmm_file.exists(), f"Missing test file: {self.hmm_file}"
+
+        marker_set = HMMMarkerSet(data=self.hmm_file)
+
+        # Assertions based on real file data
+        assert len(marker_set) == 1
+        assert marker_set[0].name == "10at10240"  # stem of the filename
+        # Check that it's a real pyhmmer HMM object
+        assert hasattr(marker_set[0], "consensus")
+
+    def test_init_with_real_directory(self):
+        """Verify loading all HMMs from the real directory."""
+        assert HMM_DIR.is_dir(), f"Missing test directory: {HMM_DIR}"
+
+        marker_set = HMMMarkerSet(data=HMM_DIR)
+
+        # Check that we loaded multiple files
+        assert len(marker_set) > 0
+        # Ensure they are all named correctly
+        for hmm in marker_set:
+            assert hmm.name is not None
+
+    def test_init_with_cutoff_file(self):
+        """Verify that bitscore cutoffs are applied correctly from the real scores file."""
+        assert CUTOFF_FILE.exists(), f"Missing cutoff file: {CUTOFF_FILE}"
+
+        # Initialize with both data and cutoffs
+        marker_set = HMMMarkerSet(data=HMM_DIR, cutoff_file=CUTOFF_FILE)
+
+        # Check if the cutoff was actually applied to the HMM object
+        # have_cutoffs returns True only if .cutoffs.trusted is set
+        assert marker_set.have_cutoffs(verbose=True) is True
+
+        # Specific bitscore check (if you know the value for 10at10240)
+        # The code sets trusted as a tuple: (float, float)
+        cutoff_val = marker_set["10at10240"].cutoffs.trusted
+        assert isinstance(cutoff_val, tuple)
+        assert len(cutoff_val) == 2
+
+    def test_init_runtime_error_no_data(self):
+        """Verify check for cutoff_file without data."""
+        with pytest.raises(RuntimeError, match="Cannot specify cutoff_file without data"):
+            HMMMarkerSet(data=None, cutoff_file=CUTOFF_FILE)
+
+    def test_getitem_by_name_real(self):
+        """Verify string-based retrieval using real data."""
+        marker_set = HMMMarkerSet(data=self.hmm_file)
+
+        # This should return the HMM object directly
+        hmm = marker_set["10at10240"]
+        assert hmm.name == "10at10240"
+
+        with pytest.raises(KeyError):
+            _ = marker_set["non_existent_marker"]
+
+    def test_set_cutoffs_with_dict(self):
+        """Test the dictionary overload of set_cutoffs."""
+        marker_set = HMMMarkerSet(data=self.hmm_file)
+        manual_cutoffs = {"10at10240": 450.0}
+
+        marker_set.set_cutoffs(manual_cutoffs)
+
+        assert marker_set["10at10240"].cutoffs.trusted == (450.0, 450.0)
+
+    def test_set_cutoffs_file_not_found(self):
+        """Verify FileNotFoundError logic."""
+        marker_set = HMMMarkerSet(data=self.hmm_file)
+        with pytest.raises(FileNotFoundError):
+            marker_set.set_cutoffs("non_existent_file.tsv")
+
+    def test_set_cutoffs_invalid_type(self):
+        """Verify TypeError for invalid input."""
+        marker_set = HMMMarkerSet(data=self.hmm_file)
+        with pytest.raises(TypeError, match="Invalid cutoffs format"):
+            # Passing an integer instead of path or dict
+            marker_set.set_cutoffs([1, 2, 3])
 
 
 # @pytest.fixture(scope="class")

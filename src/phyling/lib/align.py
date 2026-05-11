@@ -82,27 +82,19 @@ class HMMMarkerSet(_abc.DataListABC[HMM]):  # type: ignore[type-var]
                 data_tuple = (data,)
 
         self._data: list[HMM] = []
-        if data_tuple:
-            for d in data_tuple:
-                with HMMFile(d) as hmm_profile:  # type: ignore[type-var]
-                    profile_name = d.stem
-                    hmm = hmm_profile.read()
-                    if hmm:
-                        hmm.name = profile_name
-                        self.append(hmm)
+        if not data_tuple and cutoff_file:
+            raise RuntimeError("Cannot specify cutoff_file without data.")
+
+        for d in data_tuple:
+            with HMMFile(d) as hmm_profile:  # type: ignore[type-var]
+                profile_name = d.stem
+                hmm = hmm_profile.read()
+                if hmm:
+                    hmm.name = profile_name
+                    self.append(hmm)
 
         if cutoff_file:
-            cutoff_file = Path(cutoff_file)
-            if cutoff_file.is_file():
-                cutoffs_dict = {}
-                with open(cutoff_file) as f:
-                    for line in csv.reader(f, delimiter="\t"):
-                        if line[0].startswith("#"):
-                            continue
-                        cutoffs_dict[line[0]] = float(line[1])
-                self.set_cutoffs(cutoffs_dict)
-            else:
-                raise RuntimeError(f"{cutoff_file} is not a file.")
+            self.set_cutoffs(cutoff_file)
 
     @overload
     def __getitem__(self, key: int) -> HMM: ...
@@ -150,16 +142,33 @@ class HMMMarkerSet(_abc.DataListABC[HMM]):  # type: ignore[type-var]
         return True
 
     @overload
-    def set_cutoffs(self) -> None: ...
+    def set_cutoffs(self, cutoffs: str | Path) -> None: ...
     @overload
-    def set_cutoffs(self, cutoffs_dict: dict[str, float]) -> None: ...
-    def set_cutoffs(self, cutoffs_dict: dict[str, float] | None = None) -> None:
+    def set_cutoffs(self, cutoffs: dict[str, float]) -> None: ...
+    def set_cutoffs(self, cutoffs: str | Path | dict[str, float]) -> None:
         """Set model-specific bitscore cutoffs for HMM profiles.
 
         Args:
             cutoffs_dict (dict[str, float] | None): Dictionary of cutoffs.
         """
-        cutoffs_dict = dict(cutoffs_dict) if cutoffs_dict is not None else {}
+        cutoffs_dict: dict[str, float] = {}
+        if isinstance(cutoffs, (str, Path)):
+            cutoff_file = Path(cutoffs)
+            if not cutoff_file.exists():
+                raise FileNotFoundError(f"{cutoff_file}")
+            if not cutoff_file.is_file():
+                raise FileNotFoundError(f"{cutoff_file} is not a file.")
+            with open(cutoff_file) as f:
+                for line in csv.reader(f, delimiter="\t"):
+                    if line[0].startswith("#"):
+                        continue
+                    cutoffs_dict[line[0]] = float(line[1])
+        else:
+            try:
+                cutoffs_dict = dict(cutoffs)
+            except TypeError:
+                raise TypeError("Invalid cutoffs format.")
+
         for hmm, cutoff in cutoffs_dict.items():
             self[hmm].cutoffs.trusted = (float(cutoff),) * 2
 
