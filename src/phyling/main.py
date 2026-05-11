@@ -39,6 +39,7 @@ def main(args: Args) -> int:
             file_handler = logging.FileHandler(log_file, mode="w", delay=True)
             file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
             logger.addHandler(file_handler)
+            logger.debug("Log file initialized.")
 
         try:
             args.func(**vars(args))
