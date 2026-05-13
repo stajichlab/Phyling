@@ -85,7 +85,6 @@ def align(
     logger.debug("Filter hits done.")
 
     searchhits.load()
-    searchhits.orthologs.values()
     orthologs = OrthologList(list(searchhits.orthologs.values()), list(searchhits.orthologs.keys()), seqtype=seqtype)
 
     logger.info("Alignment start...")

@@ -18,7 +18,7 @@ except ImportError:
 
 from ..exception import SeqtypeError
 from . import SeqTypes
-from ._utils import CheckAttrs, get_file_checksum
+from ._utils import get_file_checksum
 
 __all__ = [
     "FileWrapperABC",
@@ -100,7 +100,7 @@ def check_loaded(
     @wraps(func)
     def wrapper(instance: _FileWrapperABC, *args: _P.args, **kwargs: _P.kwargs) -> _R:
         """Validate whether the data has been loaded before executing the function."""
-        if CheckAttrs.is_none(instance, "_data"):
+        if not instance._data:
             raise RuntimeError("Data is not loaded yet. Please run the load method to load it first.")
         return func(instance, *args, **kwargs)
 
@@ -327,11 +327,11 @@ class FileWrapperABC(ABC):
         """Set the file path."""
         file = Path(file).absolute()
         if not file.exists():
-            raise FileNotFoundError(f"{self._file}")
+            raise FileNotFoundError(f"{file}")
         if not file.is_file():
-            raise FileNotFoundError(f"{self._file} is not a file.")
+            raise FileNotFoundError(f"{file} is not a file.")
         self._file = file
-        self._checksum = get_file_checksum(self._file)
+        self._checksum = get_file_checksum(file)
 
     @property
     def name(self) -> str:
@@ -549,19 +549,15 @@ class DataListABC(ABC, Generic[_FileWrapperABC]):
         if names and not data:
             raise RuntimeError("Received no data with names specified.")
 
-        if data:
-            if names and len(data) != len(names):
-                raise RuntimeError("Data and names have different length.")
+        if names and len(data) != len(names):
+            raise RuntimeError("Data and names have different length.")
 
-            for d, name in zip_longest(data, names or []):
-                if isinstance(d, (str, Path)):
-                    d = self._bound_class(d, name, *args, **kwargs)
-                if not isinstance(d, self._bound_class):
-                    raise TypeError(f"{type(d).__qualname__} cannot be converted to {self._bound_class.__qualname__}.")
-                self.append(d)
-        else:
-            if names:
-                raise RuntimeError("Received no data with names specified.")
+        for d, name in zip_longest(data, names or []):
+            if isinstance(d, (str, Path)):
+                d = self._bound_class(d, name, *args, **kwargs)
+            if not isinstance(d, self._bound_class):
+                raise TypeError(f"{type(d).__qualname__} cannot be converted to {self._bound_class.__qualname__}.")
+            self.append(d)
 
     def __repr__(self) -> str:
         """Returns a string representation of the object.

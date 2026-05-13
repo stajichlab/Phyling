@@ -4,7 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from phyling.lib.align import HMMMarkerSet
+from phyling.exception import SeqtypeError
+from phyling.lib.align import HMMMarkerSet, SampleList, SampleSeqs, SearchHit
 
 BASE_DB = Path("tests/database/poxviridae_odb10")
 HMM_FILE = BASE_DB / "hmms" / "10at10240.hmm"
@@ -95,234 +96,239 @@ class TestHMMMarkerSet:
             marker_set.set_cutoffs([1, 2, 3])
 
 
-# @pytest.fixture(scope="class")
-# def copy_lib_ckp(shared_tmpdir_class):
-#     shutil.copy("tests/data/pep_align/.align.ckp", shared_tmpdir_class / ".align.ckp")
-#     AlignPrecheck.setup(folder=shared_tmpdir_class)
+# --- Fixtures ---
 
 
-# def need_search(samplelist: SampleList) -> int:
-#     need_search = 0
-#     for sample in samplelist:
-#         if sample.is_scanned is False:
-#             need_search += 1
-#     return need_search
+@pytest.fixture(scope="module")
+def hmms_no_cutoff() -> HMMMarkerSet:
+    """Load HMMMarkerSet without bitscore cutoffs."""
+    return HMMMarkerSet(data=HMM_DIR)
 
 
-# class TestSampleSeqs:
-#     def test_init_pep(self):
-#         a = SampleSeqs("tests/data/Monkeypox_virus.faa.gz")
-#         assert a.name == "Monkeypox_virus"
-#         assert a.seqtype == "pep"
-#         assert a.is_scanned is False
-
-#     def test_init_cds(self):
-#         a = SampleSeqs("tests/data/Monkeypox_virus.fna.gz")
-#         assert a.name == "Monkeypox_virus"
-#         assert a.seqtype == "cds"
-#         assert a.is_scanned is False
-
-#     def test_init_cds_with_bad_seq(self, caplog: pytest.LogCaptureFixture):
-#         with caplog.at_level(logging.WARNING):
-#             SampleSeqs("tests/data/Monkeypox_virus_with_bad_seq.fna")
-#         assert "seqs has invalid length" in caplog.text
-
-#     def test_len(self):
-#         a = SampleSeqs("tests/data/Monkeypox_virus.faa.gz")
-#         assert type(len(a)) is int
-
-#     def test_eq_lt(self):
-#         a = SampleSeqs("tests/data/Monkeypox_virus.faa.gz")
-#         b = SampleSeqs("tests/data/Monkeypox_virus.faa.gz")
-#         c = SampleSeqs("tests/data/pep/Anomala_cuprea_entomopoxvirus.faa.gz")
-#         assert a == b > c
-
-#     def test_eq_lt_seqtypeerror(self):
-#         a = SampleSeqs("tests/data/Monkeypox_virus.faa.gz")
-#         b = SampleSeqs("tests/data/Monkeypox_virus.fna.gz")
-#         c = SampleSeqs("tests/data/pep/Anomala_cuprea_entomopoxvirus.faa.gz")
-#         with pytest.raises(exception.SeqtypeError, match="Items represent different seqtypes"):
-#             a == b
-#         with pytest.raises(exception.SeqtypeError, match="Items represent different seqtypes"):
-#             assert b > c
-
-#     def test_getitem(self):
-#         a = SampleSeqs("tests/data/Monkeypox_virus.faa.gz")
-#         assert type(a["pep"]) == DigitalSequenceBlock
-#         assert type(a["pep", b"NP_536428.1"]) == DigitalSequence
-#         assert a["pep", b"NP_536428.1"].alphabet.is_amino() is True
-
-#         b = SampleSeqs("tests/data/Monkeypox_virus.fna.gz")
-#         assert type(b["pep"]) == DigitalSequenceBlock
-#         assert type(b["pep", b"lcl|NC_003310.1_cds_NP_536428.1_1"]) == DigitalSequence
-#         assert b["pep", b"lcl|NC_003310.1_cds_NP_536428.1_1"].alphabet.is_amino() is True
-#         assert type(b["cds"]) == DigitalSequenceBlock
-#         assert type(b["cds", b"lcl|NC_003310.1_cds_NP_536428.1_1"]) == DigitalSequence
-#         assert b["cds", b"lcl|NC_003310.1_cds_NP_536428.1_1"].alphabet.is_dna() is True
-
-#     def test_getitem_errors(self):
-#         a = SampleSeqs("tests/data/Monkeypox_virus.faa.gz")
-#         with pytest.raises(IndexError, match="Too many keys are given"):
-#             a["pep", b"NP_536428.1", "Invalid"]
-#         with pytest.raises(AttributeError, match="Cannot obtain the CDS sequences from a peptide inputs"):
-#             a["cds"]
-#         with pytest.raises(KeyError, match='First key only accepts "pep" or "cds"'):
-#             a["rna"]
-
-#     def test_scanned(self):
-#         a = SampleSeqs("tests/data/Monkeypox_virus.faa.gz")
-#         a.scanned()
-#         assert a.is_scanned is True
+@pytest.fixture(scope="module")
+def hmms_with_cutoff() -> HMMMarkerSet:
+    """Load HMMMarkerSet with bitscore cutoffs."""
+    return HMMMarkerSet(data=HMM_DIR, cutoff_file=CUTOFF_FILE)
 
 
-# class TestSampleList:
-#     files = tuple(file for file in Path("tests/data/pep").iterdir())
+class TestSampleSeqs:
+    # --- Paths ---
+    data_dir = Path("tests/data")
+    pep_fasta = data_dir / "pep" / "Monkeypox_virus.faa.gz"
+    cds_fasta = data_dir / "cds" / "Monkeypox_virus.fna.gz"
 
-#     def test_init(self):
-#         a = SampleList(self.files)
-#         assert a.seqtype == "pep"
-#         assert len(a) == len(self.files)
-#         b = SampleList(Path("tests/data/cds").iterdir())
-#         assert b.seqtype == "cds"
-#         assert len(b) == len(self.files)
+    def test_init_pep(self):
+        """Test initialization and lazy loading of peptide sequences."""
+        sample = SampleSeqs(self.pep_fasta, name="MPXV_PEP", seqtype="pep")
+        assert sample.name == "MPXV_PEP"
+        assert sample.file == self.pep_fasta.absolute()
 
-#     def test_init_gunzip(self):
-#         a = SampleList(Path("tests/data/pep_gunzip").iterdir())
-#         assert a.seqtype == "pep"
+        # Test __len__ before loading
+        with pytest.raises(RuntimeError, match="Data is not loaded yet. Please run the load method to load it first."):
+            len(sample)
 
-#     def test_init_typeerror(self):
-#         with pytest.raises(TypeError, match="only accepts list of str/Path/SampleSeqs"):
-#             SampleList([1, 2, 3])
+        # Test __iter__ before loading
+        with pytest.raises(RuntimeError, match="Data is not loaded yet. Please run the load method to load it first."):
+            [x for x in sample]
 
-#     def test_init_seqtypeerror(self):
-#         with pytest.raises(exception.SeqtypeError, match="Inputs contains more than one seqtypes"):
-#             SampleList(self.files + tuple(file for file in Path("tests/data/cds").iterdir()))
+        sample.load()
+        assert len(sample) == len([x for x in sample])
+        # Verify digital sequences are amino acids (Alphabet.amino codes are usually 0-20+)
+        assert sample._data.alphabet.is_amino()
+        assert sample.seqtype == "pep"
 
-#     def test_init_identicalkeyerror(self):
-#         with pytest.raises(exception.IdenticalKeyError, match="The following files share the same sample name"):
-#             SampleList(self.files + tuple(file for file in Path("tests/data/pep_gunzip").iterdir()))
+    def test_init_cds(self):
+        """Test that CDS sequences are correctly translated to protein on load."""
+        sample = SampleSeqs(self.cds_fasta, name="MPXV_CDS", seqtype="dna")
+        assert sample.name == "MPXV_CDS"
+        assert sample.file == self.cds_fasta.absolute()
 
-#     def test_getitem(self):
-#         a = SampleList(self.files)
-#         assert type(a["Cowpox_virus"]) == SampleSeqs
-#         assert type(a[0]) == SampleSeqs
-#         r = a[1:4]
-#         assert type(r) == SampleList
-#         assert len(r) == 3
+        # Test __len__ before loading
+        with pytest.raises(RuntimeError, match="Data is not loaded yet. Please run the load method to load it first."):
+            len(sample)
 
-#     def test_getitem_keyerror(self):
-#         a = SampleList(self.files)
-#         with pytest.raises(KeyError, match="Sample not found"):
-#             a["Invalid_name"]
+        # Test __iter__ before loading
+        with pytest.raises(RuntimeError, match="Data is not loaded yet. Please run the load method to load it first."):
+            [x for x in sample]
 
-#     def test_append(self):
-#         a = SampleList(self.files)
-#         b = SampleSeqs("tests/data/Monkeypox_virus.faa.gz")
-#         a.append(b)
-#         assert len(a) == 6
+        sample.load()
+        assert len(sample) == len([x for x in sample])
+        # Even though input is DNA, _data should store translated Amino Acid sequences
+        assert sample._data.alphabet.is_amino()
+        assert sample.seqtype == "dna"
 
-#     def test_append_typeerror(self):
-#         a = SampleList(self.files)
-#         b = 1
-#         with pytest.raises(TypeError, match="Can only append SampleSeqs object"):
-#             a.append(b)
+    def test_init_auto(self):
+        """Test guess seqtype from sequences."""
+        sample = SampleSeqs(self.pep_fasta, name="MPXV_PEP")
+        assert sample.seqtype == "pep"
+        sample = SampleSeqs(self.cds_fasta, name="MPXV_CDS")
+        assert sample.seqtype == "dna"
 
-#     def test_append_seqtypeerror(self):
-#         a = SampleList(self.files)
-#         b = SampleSeqs("tests/data/Monkeypox_virus.fna.gz")
-#         with pytest.raises(exception.SeqtypeError, match="Item represents different seqtype"):
-#             a.append(b)
+    def test_eq_lt(self):
+        a = SampleSeqs(self.pep_fasta)
+        b = SampleSeqs(self.pep_fasta)
+        c = SampleSeqs(self.data_dir / "pep" / "bgzf" / "Anomala_cuprea_entomopoxvirus.faa.gz")
+        assert a == b > c
 
-#     def test_append_identicalkeyerror(self):
-#         a = SampleList(self.files)
-#         b = SampleSeqs("tests/data/pep_gunzip/Cowpox_virus.faa")
-#         with pytest.raises(exception.IdenticalKeyError, match="already exists"):
-#             a.append(b)
+    def test_eq_lt_seqtypeerror(self):
+        a = SampleSeqs(self.pep_fasta)
+        b = SampleSeqs(self.cds_fasta)
+        c = SampleSeqs(self.data_dir / "pep" / "bgzf" / "Anomala_cuprea_entomopoxvirus.faa.gz")
+        with pytest.raises(SeqtypeError, match="Items represent different seqtypes"):
+            a == b
+        with pytest.raises(SeqtypeError, match="Items represent different seqtypes"):
+            assert b > c
 
-#     def test_pop(self):
-#         a = SampleList(self.files)
-#         a.pop(3)
-#         assert len(a) == 4
+    def test_search_mock_data(self, hmms_no_cutoff: HMMMarkerSet, monkeypatch):
+        captured_args = {}
 
-#     def test_update(self):
-#         prev = SampleList(Path("tests/data/pep_gunzip").iterdir())
-#         [file.scanned() for file in prev]
-#         cur = SampleList(self.files)
-#         assert cur.update(prev) is None
-#         assert len(cur) == 5
-#         assert need_search(cur) == 0
+        def mock_run_hmmsearch(sample, hmms, evalue, threads):
+            # Record what was passed to verify it later
+            captured_args["sample"] = sample
+            captured_args["hmms"] = hmms
+            captured_args["evalue"] = evalue
+            captured_args["threads"] = threads
+            # Return a dummy list to simulate SearchHits
+            return ["hit1", "hit2"]
 
-#     def test_update_addsample(self):
-#         prev = SampleList(Path("tests/data/pep_gunzip").iterdir())
-#         [file.scanned() for file in prev]
-#         cur = SampleList(self.files + ("tests/data/Monkeypox_virus.faa.gz",))
-#         assert cur.update(prev) is None
-#         assert len(cur) == 6
-#         assert need_search(cur) == 1
+        monkeypatch.setattr("phyling.lib.align.run_hmmsearch", mock_run_hmmsearch)
 
-#     def test_update_dropsample(self):
-#         prev = SampleList(Path("tests/data/pep_gunzip").iterdir())
-#         prev.pop(-1)
-#         prev.append(SampleSeqs("tests/data/Monkeypox_virus.faa.gz"))
-#         [file.scanned() for file in prev]
-#         cur = SampleList(self.files)
-#         assert cur.update(prev) == ["Monkeypox_virus"]
-#         assert len(cur) == 5
-#         assert need_search(cur) == 1
+        # 4. Initialize objects
+        sample = SampleSeqs(self.pep_fasta, name="test_sample", seqtype="pep")
 
-#     def test_update_typeerror(self):
-#         prev = [1, 2, 3]
-#         cur = SampleList(self.files)
-#         with pytest.raises(TypeError, match="Can only update with SampleList object"):
-#             cur.update(prev)
+        # 5. Execute search (with custom parameters)
+        results = sample.search(hmms_no_cutoff, evalue=0.001, threads=4)
 
-#     def test_update_seqtypeerror(self):
-#         prev = SampleList(Path("tests/data/cds").iterdir())
-#         cur = SampleList(self.files)
-#         with pytest.raises(exception.SeqtypeError, match="Item represents different seqtype"):
-#             cur.update(prev)
+        # 6. Assertions
+        assert results == ["hit1", "hit2"]
+        assert captured_args["evalue"] == 0.001
+        assert captured_args["threads"] == 4
+        assert captured_args["sample"] == sample
+        assert captured_args["hmms"] == hmms_no_cutoff
+
+    def test_search_real_data(self, hmms_no_cutoff: HMMMarkerSet):
+        """Run search using standard E-value filtering (no bitscore cutoffs)."""
+        sample = SampleSeqs(self.pep_fasta, seqtype="pep")
+
+        # run_hmmsearch should return a list of SearchHit
+        hits = sample.search(hmms_no_cutoff, evalue=1e-5)
+
+        assert isinstance(hits, list)
+        assert isinstance(hits[0], SearchHit)
+
+    def test_cds_problematic_reporting(self, caplog: pytest.LogCaptureFixture):
+        """Test that the class logs warnings for invalid CDS lengths."""
+        # If you have a known 'bad' CDS file, use it here.
+        # Otherwise, this just ensures the process finishes.
+        sample = SampleSeqs(self.data_dir / "cds" / "Monkeypox_virus_with_bad_seq.fna", seqtype="dna")
+        sample.load()
+
+        # check if logger captured the warning.
+        assert "seqs have invalid length" in caplog.text
 
 
-# class TestHMMMarkerSet:
-#     markerset_path = Path("tests/database/poxviridae_odb10/hmms")
-#     cutoff_path = markerset_path.parent / "scores_cutoff"
+class TestSampleList:
+    files = tuple(file for file in Path("tests/data/pep/bgzf").iterdir())
+    names = tuple(f"name_{i}" for i in range(len(files)))
 
-#     def test_init(self):
-#         markerset = HMMMarkerSet(self.markerset_path)
-#         assert markerset.have_cutoff is False
-#         markerset = HMMMarkerSet(self.markerset_path, self.cutoff_path)
-#         assert markerset.have_cutoff is True
+    def mock_helper(self, sample, hmms, evalue, threads):
+        # Return a dummy list of "hits"
+        return [f"hit_from_{sample.name}"]
 
-#     def test_init_typerror(self):
-#         with pytest.raises(TypeError, match='Argument "folder" only accepts of str or Path'):
-#             HMMMarkerSet([1, 2, 3])
+    def test_sample_list_init_with_paths(self):
+        """Verify initialization with a list of file paths and test __getitem__."""
+        sl = SampleList(self.files)
+        assert len(sl) == len(self.files)
 
-#     def test_init_cutoff_not_found(self, caplog: pytest.LogCaptureFixture):
-#         with pytest.raises(FileNotFoundError, match="HMM cutoff file not found"):
-#             HMMMarkerSet(self.markerset_path, "Invalid_path")
-#         with caplog.at_level(logging.WARNING):
-#             HMMMarkerSet(self.markerset_path, "Invalid_path", raise_err=False)
-#         assert "HMM cutoff file not found. Will use evalue instead" in caplog.text
+        subset = sl[1]
+        assert isinstance(subset, SampleSeqs)
+        subset = sl[0:2]
+        assert isinstance(subset, SampleList)
+        assert len(subset) == 2
 
-#     def test_init_cutoff_not_match(self, caplog: pytest.LogCaptureFixture):
-#         with pytest.raises(KeyError, match="HMM cutoff file doesn't match the markerset"):
-#             HMMMarkerSet(self.markerset_path, "tests/database/alphaherpesvirinae_odb10/scores_cutoff")
-#         with caplog.at_level(logging.WARNING):
-#             HMMMarkerSet(self.markerset_path, "tests/database/alphaherpesvirinae_odb10/scores_cutoff", raise_err=False)
-#         assert "HMM cutoff file doesn't match the markerset. Will use evalue instead" in caplog.text
+        for i in range(len(sl)):
+            assert isinstance(sl[i], SampleSeqs)
+            assert sl[i].file == self.files[i].absolute()
+            assert sl[i].name == self.files[i].name
+            assert sl[i] == sl[self.files[i].name]
 
-#     def test_getitem(self):
-#         markerset = HMMMarkerSet(self.markerset_path)
-#         assert type(markerset[b"14at10240"]) == HMM
-#         assert type(markerset[0]) == HMM
-#         r = markerset[1:4]
-#         assert len(r) == 3
-#         assert type(r[0]) == HMM
+        sl = SampleList(self.files, names=self.names)
+        assert len(sl) == len(self.files)
+        for i in range(len(sl)):
+            assert sl[i].file == self.files[i].absolute()
+            assert sl[i].name == self.names[i]
+            assert sl[i] == sl[self.names[i]]
 
-#     def test_getitem_keyerror(self):
-#         markerset = HMMMarkerSet(self.markerset_path)
-#         with pytest.raises(KeyError, match="Sample not found"):
-#             markerset[b"8at10293"]
+    def test_init_typeerror(self):
+        with pytest.raises(TypeError, match="int cannot be converted to SampleSeqs"):
+            SampleList([1, 2, 3])
+
+    def test_init_names_and_data_mismatched(self):
+        """Ensure error if names provided without data or with different length."""
+        with pytest.raises(RuntimeError, match="Received no data with names specified."):
+            SampleList(data=[], names=self.names)
+
+        with pytest.raises(RuntimeError, match="Data and names have different length."):
+            SampleList(data=self.files, names=self.names + ("extra_name",))
+
+    def test_sample_list_init_mixed_seqtypes(self) -> None:
+        """Verify Error with files with mixed seqtypes."""
+        mixed_seqtypes_files = self.files + (Path("tests/data/cds/Monkeypox_virus.fna.gz"),)
+        with pytest.raises(SeqtypeError, match="Items represent different seqtypes"):
+            SampleList(mixed_seqtypes_files)
+
+    # --- Search Orchestration Tests (Mocked) ---
+
+    def test_search_sequential_logic(self, hmms_with_cutoff: HMMMarkerSet, monkeypatch, caplog: pytest.LogCaptureFixture):
+        """Test sequential search mode logic."""
+        sl = SampleList(self.files)
+
+        monkeypatch.setattr("phyling.lib.align._search_helper", self.mock_helper)
+
+        with caplog.at_level("DEBUG"):
+            results = sl.search(hmms_with_cutoff, jobs=1, threads=2)
+
+        assert "Sequential mode" in caplog.text
+        assert f"Progress: {len(self.files)} / {len(self.files)}" in caplog.text
+        assert f"hit_from_{self.files[0].name}" in results
+
+    def test_search_parallel_logic(self, hmms_with_cutoff: HMMMarkerSet, monkeypatch, caplog: pytest.LogCaptureFixture):
+        """Test search orchestration using monkeypatch to avoid actual pyhmmer calls."""
+
+        # 1. Setup SampleList
+        sl = SampleList(self.files)
+
+        # Patch the helper used by 'partial' in the search method
+        monkeypatch.setattr("phyling.lib.align._search_helper", self.mock_helper)
+
+        # 3. Test Parallel Mode (jobs > 1)
+        with caplog.at_level("DEBUG"):
+            results = sl.search(hmms_with_cutoff, jobs=3, threads=1)
+
+        assert len(results) == len(self.files)
+        assert "Multiprocesses mode" in caplog.text
+        assert f"Progress: {len(self.files)} / {len(self.files)}" in caplog.text
+        assert f"hit_from_{self.files[0].name}" in results
+
+    def test_search_invalid_jobs(self, hmms_with_cutoff: HMMMarkerSet):
+        """Ensure RuntimeError when jobs are out of bounds."""
+        sl = SampleList(self.files)
+        with pytest.raises(RuntimeError, match="jobs should be between 1 and"):
+            sl.search(hmms_with_cutoff, jobs=len(self.files) + 1)
+
+    # --- Integration Test (Real Search) ---
+
+    @pytest.mark.slow
+    def test_search_integration_real_data(self, hmms_with_cutoff: HMMMarkerSet):
+        """A real search against the poxviridae database (No mocks)."""
+        # Load real samples
+        sl = SampleList(self.files)
+
+        # Perform search
+        results = sl.search(hmms_with_cutoff, evalue=1e-10, jobs=1)
+
+        assert isinstance(results, list)
+        assert isinstance(results[0], SearchHit)
 
 
 # class TestOrthologs:
