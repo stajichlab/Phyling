@@ -12,6 +12,9 @@ from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from typing import Any, BinaryIO, Iterable, Iterator, Literal, NamedTuple, Sequence, cast, overload
 
+import numpy as np
+from numpy.typing import NDArray
+
 try:
     # Try the modern location first
     from typing import Self
@@ -442,28 +445,39 @@ class SearchHit(NamedTuple):
 
     hmm: str
     sample: SampleSeqs
-    sequence: str
+    seqid: str
 
 
 class SearchHitsManager:
     """A list-like object that saves the hmmsearch hits and facilitates sequence retrieval."""
 
-    __slots__ = ("_data", "_orthologs", "_samples", "_mfa_dir")
+    __slots__ = ("_mfa_dir", "_orthologs", "_samples", "_hmm_arr", "_sample_arr", "_seqid_arr")
+    hit_dtype = [
+        ("hmm", "U32"),  # Unicode string up to 32 chars
+        ("sample", "O"),  # Python Object (for SampleSeqs)
+        ("seqid", "U64"),  # Unicode string up to 64 chars
+    ]
 
-    def __init__(self, hits: list[SearchHit] | None = None) -> None:
+    @overload
+    def __init__(self) -> None: ...
+    @overload
+    def __init__(self, hits: Sequence[SearchHit]) -> None: ...
+    def __init__(self, hits: Sequence[SearchHit] = ()) -> None:
         """Initialize the manager with optional hits and sample list.
 
         Args:
-            hits (list[SearchHit] | None): Optional list of search hits.
+            hits (Sequence[SearchHit]): Optional sequence of search hits.
         """
-        hits = hits or []
-        self._data: list[SearchHit] = []
-        self._orthologs: dict[str, list[int]] = {}  # Based on hits
-        self._samples: dict[SampleSeqs, list[int]] = {}  # Based on hits
         self._mfa_dir: tempfile.TemporaryDirectory | None = None
+        self._orthologs = {}
+        self._samples = {}
 
-        for hit in hits:
-            self.add(hit)
+        self._hmm_arr = np.array([], dtype=np.int32)
+        self._sample_arr = np.array([], dtype=np.int32)
+        self._seqid_arr = np.array([], dtype="U64")  # Strings are okay here
+
+        if hits:
+            self.update(hits)
 
     def __del__(self) -> None:
         """Clean up when the object is destroyed."""
@@ -489,7 +503,13 @@ class SearchHitsManager:
         """
         if not isinstance(other, type(self)):
             return NotImplemented
-        return (self._orthologs == other._orthologs) and (self._samples == other._samples)
+        return (self._orthologs, self._samples, self._hmm_arr, self._sample_arr, self._seqid_arr) == (
+            other._orthologs,
+            other._samples,
+            other._hmm_arr,
+            other._sample_arr,
+            other._seqid_arr,
+        )
 
     @overload
     def __getitem__(self, key: int) -> SearchHit: ...
@@ -506,12 +526,19 @@ class SearchHitsManager:
         Returns:
             SearchHit | SearchHitsManager: The corresponding hits.
         """
-        if isinstance(key, slice):
-            return self.__class__(self._data[key])
-        elif isinstance(key, list):
-            return self.__class__([self._data[x] for x in key])
-        else:
-            return self._data[key]
+        if isinstance(key, (slice, list, np.ndarray)):
+            new_manager = self.__class__()
+            new_manager._hmm_arr = self._hmm_arr[key]
+            new_manager._sample_arr = self._sample_arr[key]
+            new_manager._seqid_arr = self._seqid_arr[key]
+            new_manager._orthologs = self._orthologs
+            new_manager._samples = self._samples
+            return new_manager
+
+        hmm = {v: k for k, v in self._orthologs.items()}[self._hmm_arr[key]]
+        sample = {v: k for k, v in self._samples.items()}[self._sample_arr[key]]
+
+        return SearchHit(hmm=hmm, sample=sample, seqid=self._seqid_arr[key])
 
     def __len__(self) -> int:
         """Get the number of hits in the manager.
@@ -519,15 +546,16 @@ class SearchHitsManager:
         Returns:
             int: The number of hits.
         """
-        return len(self._data)
+        return len(self._seqid_arr)
 
     def __iter__(self) -> Iterator[SearchHit]:
         """Iterate over the search hits.
 
-        Returns:
+        Yield:
             Iterator[SearchHit]: An iterator over the hits.
         """
-        return iter(self._data)
+        for i in range(len(self)):
+            yield self[i]
 
     def __getstate__(self) -> dict:
         """Prepare the object for pickling.
@@ -535,7 +563,8 @@ class SearchHitsManager:
         Returns:
             dict: The state of the object.
         """
-        self.samplelist.unload()
+        for x in self._samples:
+            x.unload()
         self.unload()
         return {slot: getattr(self, slot) for slot in self.__slots__}
 
@@ -548,25 +577,31 @@ class SearchHitsManager:
         for slot, value in state.items():
             setattr(self, slot, value)
 
-    def add(self, hit: SearchHit) -> None:
-        """Add a new search hit to the manager.
-
-        Args:
-            hit (SearchHit): The search hit to add.
-        """
-        idx = len(self._data)
-        self._data.append(hit)
-        self._orthologs.setdefault(hit.hmm, []).append(idx)
-        self._samples.setdefault(hit.sample, []).append(idx)
-
     def update(self, hits: Iterable[SearchHit]) -> None:
         """Update new search hits to the manager.
 
         Args:
             hit (Iterator[SearchHit]): The search hit to add.
         """
-        for hit in hits:
-            self.add(hit)
+        new_hits = list(hits)
+        if not new_hits:
+            return
+
+        for h in new_hits:
+            if h.hmm not in self._orthologs:
+                self._orthologs[h.hmm] = len(self._orthologs)
+            if h.sample not in self._samples:
+                self._samples[h.sample] = len(self._samples)
+
+        # 2. Encode the new data
+        new_hmm_arr = np.array([self._orthologs[h.hmm] for h in new_hits], dtype=np.int32)
+        new_sam_arr = np.array([self._samples[h.sample] for h in new_hits], dtype=np.int32)
+        new_seqs = np.array([h.seqid for h in new_hits], dtype="U64")
+
+        # 3. Concatenate (Re-allocate)
+        self._hmm_arr = np.concatenate([self._hmm_arr, new_hmm_arr])
+        self._sample_arr = np.concatenate([self._sample_arr, new_sam_arr])
+        self._seqid_arr = np.concatenate([self._seqid_arr, new_seqs])
 
     @property
     def samplelist(self) -> SampleList:
@@ -584,22 +619,21 @@ class SearchHitsManager:
         Returns:
             dict[str, tuple | Path]: The orthologs.
         """
-        if self._mfa_dir:
-            mfa_dir_path = Path(self._mfa_dir.name)
-            return {hmm: mfa_dir_path / f"{hmm}.fa" for hmm in self._orthologs.keys()}
-        else:
+        if not self._mfa_dir:
             raise RuntimeError("Please run the load method first.")
+        mfa_dir_path = Path(self._mfa_dir.name)
+        return {hmm: mfa_dir_path / f"{hmm}.fa" for hmm in self._orthologs.keys()}
 
     @overload
     def filter(self, *, min_taxa: int) -> Self: ...
     @overload
-    def filter(self, *, drop_samples: Sequence) -> Self: ...
-    def filter(self, *, min_taxa: int = 0, drop_samples: Sequence[str] = ()) -> Self:
+    def filter(self, *, drop_samples: Sequence[str]) -> Self: ...
+    def filter(self, *, min_taxa: int = 1, drop_samples: Sequence[str] = ()) -> Self:
         """Filter hits by minimum taxa or dropping specific samples.
 
         Args:
-            min_taxa (int, optional): Minimum number of taxa. Defaults to 0.
-            drop_samples (Sequence[str] | None, optional): Samples to drop. Defaults to None.
+            min_taxa (int, optional): Minimum number of taxa. Defaults to 1.
+            drop_samples (Sequence[str] | None, optional): Samples to drop.
 
         Returns:
             SearchHitsManager: A new manager with filtered hits.
@@ -607,32 +641,67 @@ class SearchHitsManager:
         Raises:
             EmptyWarning: If no hits are left after filtering.
         """
-        drop_samples = tuple(set(drop_samples))
-        selected_idx = [x for x in range(len(self))]
-        if min_taxa and drop_samples:
-            return self.filter(drop_samples=drop_samples).filter(min_taxa=min_taxa)
-        elif drop_samples:
-            selected_idx = [idx for idx, data in enumerate(self) if data.sample.name not in drop_samples]
-        elif min_taxa:
-            selected_idx = sorted([idx for indices in self._orthologs.values() for idx in indices if len(indices) >= min_taxa])
-        if not selected_idx:
-            raise EmptyWarning("No hit left after filtering.")
+        mask = np.ones(len(self._seqid_arr), dtype=bool)
 
-        return self[selected_idx]
+        if drop_samples:
+            # Convert drop_names to the internal integer IDs
+            drop_ids = [self._samples[s] for s in self._samples if s.name in drop_samples]
+            mask &= ~np.isin(self._sample_arr, drop_ids)
+
+        if min_taxa > 1:
+            valid_hmms = []
+            # Only iterate through HMMs present in the current mask
+            for h_idx in np.unique(self._hmm_arr[mask]):
+                # Get sample IDs for this HMM
+                associated_samples = self._sample_arr[mask & (self._hmm_arr == h_idx)]
+                # Unique counts are much faster on integers than objects
+                if len(np.unique(associated_samples)) >= min_taxa:
+                    valid_hmms.append(h_idx)
+
+            mask &= np.isin(self._hmm_arr, valid_hmms)
+
+        if not np.any(mask):
+            raise EmptyWarning("No hits left after filtering.")
+
+        new_manager = self[np.where(mask)[0].tolist()]
+        new_manager.compact()
+
+        return new_manager
 
     def load(self) -> None:
         """Retrieve the sequences for each alignment."""
         if not self._mfa_dir:
             self._mfa_dir = tempfile.TemporaryDirectory(prefix="phyling_align_mfa_")
+
         try:
             with tempfile.TemporaryDirectory() as faidx_dir:
                 faidx_dir = Path(faidx_dir)
                 msa_dir_path = Path(self._mfa_dir.name)
-                loaded_seqs: list[SeqRecord] = [None] * len(self)  # type: ignore
-                for sample, indices in self._samples.items():
-                    self._to_seqrecord(sample, indices, loaded_seqs, faidx_dir)
-                for hmm, indices in self._orthologs.items():
-                    self._write_to_file(loaded_seqs, indices, msa_dir_path / f"{hmm}.fa")
+
+                # Pre-allocate a list to hold SeqRecord objects
+                # Using a list is fine here as we just need a temporary pointer buffer
+                loaded_seqs: list[SeqRecord] = [None] * len(self.hmm_ids)  # type: ignore
+
+                # 1. Group by Sample (Minimize File Open/Close)
+                # Find all unique sample IDs actually present in the current data
+                unique_sample_indices = np.unique(self._sample_arr)
+
+                for s_idx in unique_sample_indices:
+                    sample_obj = self._samples[s_idx]
+                    # Find integer indices in the array belonging to this sample
+                    hit_indices = np.where(self._sample_arr == s_idx)[0]
+
+                    self._to_seqrecord(sample_obj, hit_indices, loaded_seqs, faidx_dir)
+
+                # 2. Group by HMM (Write Ortholog FASTA files)
+                unique_hmm_indices = np.unique(self._hmm_arr)
+                for h_idx in unique_hmm_indices:
+                    hmm_name = self._orthologs[h_idx]
+                    # Find hit indices belonging to this HMM
+                    hit_indices = np.where(self._hmm_arr == h_idx)[0]
+
+                    self._write_to_file(loaded_seqs, hit_indices, msa_dir_path / f"{hmm_name}.fa")
+
         except Exception:
             self.unload()
             raise
@@ -643,7 +712,46 @@ class SearchHitsManager:
             self._mfa_dir.cleanup()
             self._mfa_dir = None
 
-    def _to_seqrecord(self, sample: SampleSeqs, indices: list[int], loaded_seqs: list, path: Path) -> None:
+    def compact(self) -> None:
+        """Re-indexes the entire manager to ensure no ghost entries and contiguous IDs."""
+        if len(self._hmm_arr) == 0:
+            self._orthologs = {}
+            self._samples = {}
+            return
+
+        # 1. Compact HMMs
+        u_hmm_ids = np.unique(self._hmm_arr)
+        # Create a new mapping: Old ID -> New ID (0 to N)
+        h_remap = {old_id: new_id for new_id, old_id in enumerate(u_hmm_ids)}
+
+        # Rebuild dictionaries
+        new_orth = {}
+        rev_orth = {v: k for k, v in self._orthologs.items()}
+        for old_id in u_hmm_ids:
+            name = rev_orth[old_id]
+            new_id = h_remap[old_id]
+            new_orth[name] = new_id
+
+        # Update array with the new contiguous IDs
+        # (This is vectorized and very fast)
+        self._hmm_arr = np.array([h_remap[i] for i in self._hmm_arr], dtype=np.int32)
+        self._orthologs = new_orth
+
+        # 2. Compact Samples
+        u_sample_ids = np.unique(self._sample_arr)
+        s_remap = {old_id: new_id for new_id, old_id in enumerate(u_sample_ids)}
+
+        new_samp = {}
+        rev_samp = {v: k for k, v in self._samples.items()}
+        for old_id in u_sample_ids:
+            obj = rev_samp[old_id]
+            new_id = s_remap[old_id]
+            new_samp[obj] = new_id
+
+        self._sample_arr = np.array([s_remap[i] for i in self._sample_arr], dtype=np.int32)
+        self._samples = new_samp
+
+    def _to_seqrecord(self, sample: SampleSeqs, indices: NDArray[np.int32], loaded_seqs: list, path: Path) -> None:
         """Convert hits to sequence records.
 
         Args:
@@ -653,24 +761,31 @@ class SearchHitsManager:
             path (Path): Path for temporary storage.
         """
         try:
+            # Using pyfaidx.Fasta allows random access to large/compressed fastas
             seqs_handler = Fasta(
-                sample.file,
-                indexname=Path(path) / f"{sample.name}.fai",
-                gzi_indexname=Path(path) / f"{sample.name}.gzi",
+                str(sample.file),
+                indexname=path / f"{sample.name}.fai",
+                gzi_indexname=path / f"{sample.name}.gzi",
             )
+
             for idx in indices:
-                data = self._data[idx]
+                # Retrieve the original sequence name string
+                seq_id = self._seqid_arr[idx]
+
+                # Build the record
+                # We use sample.name for the record ID to facilitate alignment (taxa names)
+                # and put the actual protein/gene ID in the description
                 seqrec = SeqRecord(
-                    seq=Seq(str(seqs_handler[data.sequence])),
+                    seq=Seq(str(seqs_handler[seq_id])),
                     id=sample.name,
                     name=sample.name,
-                    description=data.sequence,
+                    description=seq_id,
                 )
                 loaded_seqs[idx] = seqrec
         except Exception as e:
-            raise type(e)(f"{sample.file}: {e}").with_traceback(e.__traceback__)
+            raise type(e)(f"Error processing {sample.file}: {e}").with_traceback(e.__traceback__)
 
-    def _write_to_file(self, seqrecords: list[SeqRecord], indices: list[int], path: Path) -> None:
+    def _write_to_file(self, seqrecords: list[SeqRecord], indices: NDArray[np.int32], path: Path) -> None:
         """Write sequence records to a file.
 
         Args:
