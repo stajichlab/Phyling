@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import pickle
 from pathlib import Path
 
 import pytest
 
-from phyling.exception import SeqtypeError
-from phyling.lib.align import HMMMarkerSet, SampleList, SampleSeqs, SearchHit
+from phyling.exception import EmptyWarning, SeqtypeError
+from phyling.lib.align import HMMMarkerSet, SampleList, SampleSeqs, SearchHit, SearchHitsManager
 
 BASE_DB = Path("tests/database/poxviridae_odb10")
 HMM_FILE = BASE_DB / "hmms" / "10at10240.hmm"
@@ -329,6 +330,149 @@ class TestSampleList:
 
         assert isinstance(results, list)
         assert isinstance(results[0], SearchHit)
+
+
+class MockSampleSeqs:
+    def __init__(self, name: str, file: str = "mock.fasta"):
+        self.name = name
+        self.file = file
+
+
+@pytest.fixture
+def sample_a():
+    return MockSampleSeqs("Sample_A")
+
+
+@pytest.fixture
+def sample_b():
+    return MockSampleSeqs("Sample_B")
+
+
+@pytest.fixture
+def sample_c():
+    return MockSampleSeqs("Sample_C")
+
+
+@pytest.fixture()
+def standard_hits(sample_a, sample_b):
+    return [
+        SearchHit(hmm="HMM_1", sample=sample_a, seqid="seq_01"),
+        SearchHit(hmm="HMM_1", sample=sample_b, seqid="seq_02"),
+        SearchHit(hmm="HMM_2", sample=sample_a, seqid="seq_03"),
+    ]
+
+
+class TestSearchHitsManager:
+    def test_init_and_update_encoding(self, standard_hits):
+        """Verify that initialization and batch updating correctly map string/object data to integers."""
+        manager = SearchHitsManager(standard_hits)
+
+        assert len(manager) == 3
+        # Check that identical HMMs/Samples resolve to the same underlying integer ID
+        assert manager._hmm_arr[0] == manager._hmm_arr[1]  # Both HMM_1
+        assert manager._hmm_arr[0] != manager._hmm_arr[2]  # HMM_1 vs HMM_2
+
+        assert manager._sample_arr[0] == manager._sample_arr[2]  # Both Sample_A
+        assert manager._sample_arr[0] != manager._sample_arr[1]  # Sample_A vs Sample_B
+
+        for i, hit in enumerate(standard_hits):
+            assert manager._seqid_arr[i] == hit.seqid
+
+    def test_getitem_single_element(self, standard_hits, sample_a, sample_b):
+        """Ensure element access correctly reverses integers back to namedtuple objects on-the-fly."""
+        manager = SearchHitsManager(standard_hits)
+
+        hit_0 = manager[0]
+        assert isinstance(hit_0, SearchHit)
+        assert hit_0.hmm == "HMM_1"
+        assert hit_0.sample is sample_a
+        assert hit_0.seqid == "seq_01"
+
+        hit_1 = manager[1]
+        assert hit_1.hmm == "HMM_1"
+        assert hit_1.sample is sample_b
+        assert hit_1.seqid == "seq_02"
+
+    def test_getitem_lazy_slicing(self, standard_hits):
+        """Verify slicing yields a new manager sharing the master dictionary maps (lazy evaluation)."""
+        manager = SearchHitsManager(standard_hits)
+
+        sliced = manager[0:2]
+        assert isinstance(sliced, SearchHitsManager)
+        assert len(sliced) == 2
+
+        # Lazy behavior check: Slicing should retain the parent dictionary mappings
+        assert sliced._orthologs == manager._orthologs
+        assert sliced._samples == manager._samples
+
+    def test_compact_removes_ghosts_and_reindexes(self, standard_hits, sample_a, sample_b):
+        """Test that compact() completely drops unused categories and shifts remaining keys to 0..N."""
+        manager = SearchHitsManager(standard_hits)
+
+        # Slice down to just the hit containing HMM_2 and Sample_A
+        sliced = manager[2:3]
+        sliced.compact()
+
+        # Verification of purged metadata
+        assert "HMM_1" not in sliced._orthologs
+        assert "HMM_2" in sliced._orthologs
+        assert sample_a in sliced._samples
+        assert sample_b not in sliced._samples
+        assert len(sliced._samples) == 1
+
+        # Verification of re-indexed arrays (must map to contiguous 0..N sequence)
+        assert sliced._hmm_arr[0] == 0
+        assert sliced._sample_arr[0] == 0
+
+        # Test on-the-fly reconstruction after compaction
+        reconstructed = sliced[0]
+        assert reconstructed.hmm == "HMM_2"
+        assert reconstructed.sample is sample_a
+
+    def test_filter_drop_samples(self, standard_hits, sample_a, sample_b):
+        """Verify vectorized filtering correctly handles sample exclusions and drops metadata via compact."""
+        manager = SearchHitsManager(standard_hits)
+
+        filtered = manager.filter(drop_samples=["Sample_B"])
+
+        assert len(filtered) == 2
+        assert sample_b not in filtered._samples
+        rev_samp = {v: k for k, v in manager._samples.items()}
+        assert all(rev_samp[s_idx] is sample_a for s_idx in filtered._sample_arr)
+
+    def test_filter_min_taxa_logic(self, sample_a, sample_b, sample_c):
+        """Confirm the ortholog-aware taxa counter targets and purges markers below threshold limits."""
+        hits = [
+            # HMM_1 satisfies min_taxa=2 (found across 2 different samples)
+            SearchHit(hmm="HMM_1", sample=sample_a, seqid="s1"),
+            SearchHit(hmm="HMM_1", sample=sample_b, seqid="s2"),
+            # HMM_2 fails min_taxa=2 (2 hits, but both trapped inside a single sample)
+            SearchHit(hmm="HMM_2", sample=sample_c, seqid="s3"),
+            SearchHit(hmm="HMM_2", sample=sample_c, seqid="s4"),
+        ]
+        manager = SearchHitsManager(hits)
+
+        filtered = manager.filter(min_taxa=2)
+
+        assert len(filtered) == 2
+        assert "HMM_1" in filtered._orthologs
+        assert "HMM_2" not in filtered._orthologs
+
+    def test_filter_empty_raises_warning(self, standard_hits):
+        """Ensure an EmptyWarning gets triggered when filtering strips every row out."""
+        manager = SearchHitsManager(standard_hits)
+
+        with pytest.raises(EmptyWarning):
+            manager.filter(drop_samples=["Sample_A", "Sample_B"])
+
+    def test_compact_empty_manager(self):
+        """Verify that calling compact on an empty manager behaves gracefully without errors."""
+        manager = SearchHitsManager()
+        manager.compact()
+
+        assert manager._orthologs == {}
+        assert manager._samples == {}
+        assert len(manager._hmm_arr) == 0
 
 
 # class TestOrthologs:
