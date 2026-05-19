@@ -3,10 +3,15 @@ from __future__ import annotations
 import pickle
 from pathlib import Path
 
+import numpy as np
 import pytest
+from Bio.Align import MultipleSeqAlignment
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
 
 from phyling.exception import EmptyWarning, SeqtypeError
-from phyling.lib.align import HMMMarkerSet, SampleList, SampleSeqs, SearchHit, SearchHitsManager
+from phyling.lib import SeqTypes
+from phyling.lib.align import HMMMarkerSet, OrthologSeqs, SampleList, SampleSeqs, SearchHit, SearchHitsManager
 
 BASE_DB = Path("tests/database/poxviridae_odb10")
 HMM_FILE = BASE_DB / "hmms" / "10at10240.hmm"
@@ -336,24 +341,28 @@ class MockSampleSeqs:
     def __init__(self, name: str, file: str = "mock.fasta"):
         self.name = name
         self.file = file
+        self._data: tuple = ("data",)
+
+    def unload(self):
+        self._data = ()
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def sample_a():
     return MockSampleSeqs("Sample_A")
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def sample_b():
     return MockSampleSeqs("Sample_B")
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def sample_c():
     return MockSampleSeqs("Sample_C")
 
 
-@pytest.fixture()
+@pytest.fixture(scope="class")
 def standard_hits(sample_a, sample_b):
     return [
         SearchHit(hmm="HMM_1", sample=sample_a, seqid="seq_01"),
@@ -404,6 +413,44 @@ class TestSearchHitsManager:
         # Lazy behavior check: Slicing should retain the parent dictionary mappings
         assert sliced._orthologs == manager._orthologs
         assert sliced._samples == manager._samples
+
+    def test_pickle_serialization_loop(self, standard_hits, sample_a):
+        """Verify that __getstate__ and __setstate__ preserve all state and numpy arrays during serialization."""
+        # 1. Setup original manager and populate data
+        original_manager = SearchHitsManager(standard_hits)
+
+        # 2. Serialize (Pickle) the object to bytes (triggers __getstate__)
+        pickled_data = pickle.dumps(original_manager)
+
+        # 3. Deserialize (Unpickle) back to a new object (triggers __setstate__)
+        unpickled_manager = pickle.loads(pickled_data)
+
+        # 4. Assert structural integrity and object equivalence
+        assert isinstance(unpickled_manager, SearchHitsManager)
+        assert len(unpickled_manager) == len(original_manager)
+
+        # Verify primary maps match exactly
+        assert unpickled_manager._orthologs == original_manager._orthologs
+        # Object references inside dictionaries should evaluate identically by key value
+        assert list(unpickled_manager._samples.keys())[0].name == sample_a.name
+
+        # Verify NumPy array values and dtypes are preserved exactly
+        assert np.array_equal(unpickled_manager._hmm_arr, original_manager._hmm_arr)
+        assert np.array_equal(unpickled_manager._sample_arr, original_manager._sample_arr)
+        assert np.array_equal(unpickled_manager._seqid_arr, original_manager._seqid_arr)
+
+        assert unpickled_manager._hmm_arr.dtype == original_manager._hmm_arr.dtype
+        assert unpickled_manager._seqid_arr.dtype == original_manager._seqid_arr.dtype
+
+    def test_pickle_empty_manager(self):
+        """Ensure an unpopulated or fresh manager can be serialized without throwing errors."""
+        manager = SearchHitsManager()
+
+        pickled_data = pickle.dumps(manager)
+        unpickled_manager = pickle.loads(pickled_data)
+
+        assert len(unpickled_manager._hmm_arr) == 0
+        assert unpickled_manager._orthologs == {}
 
     def test_compact_removes_ghosts_and_reindexes(self, standard_hits, sample_a, sample_b):
         """Test that compact() completely drops unused categories and shifts remaining keys to 0..N."""
@@ -473,6 +520,213 @@ class TestSearchHitsManager:
         assert manager._orthologs == {}
         assert manager._samples == {}
         assert len(manager._hmm_arr) == 0
+
+
+class MockSequence:
+    def __init__(self, name: str, sequence: str, description: str = ""):
+        self.name = name
+        self.sequence = sequence
+        self.description = description
+
+    def translate(self):
+        # Returns a mock translated object
+        return MockSequence(self.name, "MOCK_AMINO_ACID_SEQ")
+
+    def textize(self):
+        return self
+
+
+class MockDNASeq:
+    """Mock for pyhmmer's DigitalSequence for DNA."""
+
+    def __init__(self, name: str, sequence: str, description: str = ""):
+        self.name = name
+        self.sequence = sequence
+        self.description = description
+
+    def translate(self):
+        # Simplistic translation mock returning a dummy object
+        return f"TRANSLATED_{self.sequence}"
+
+    def textize(self):
+        class Textized:
+            def __init__(self, seq):
+                self.sequence = seq
+
+        return Textized(self.sequence)
+
+
+class MockDigitalSequenceBlock(list):
+    """Mock for pyhmmer's DigitalSequenceBlock container."""
+
+    pass
+
+
+# -----------------------------------------------------------------------------
+# Fixtures
+# -----------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="class")
+def dummy_faa(tmp_path_factory):
+    """Creates a real FAA file in a class-scoped temporary directory."""
+    # Create a unique directory under the class session
+    tmp_dir = tmp_path_factory.mktemp("fasta_class_data")
+    fasta_file = tmp_dir / "marker_001.faa"
+
+    content = ">Species_A\nMITC\n>Species_B\nMATC\n>Species_C\nMITG\n"
+    fasta_file.write_text(content, encoding="utf-8")
+    return fasta_file
+
+
+@pytest.fixture(scope="class")
+def dummy_fna(tmp_path_factory):
+    """Creates a real FNA file in a class-scoped temporary directory."""
+    tmp_dir = tmp_path_factory.mktemp("fasta_class_data")
+    fasta_file = tmp_dir / "marker_001.fna"
+
+    content = ">Species_A\nATGATCACGTGT\n>Species_B\nATGGCTACTTGT\n>Species_C\nATGATAACAGGA\n"
+    fasta_file.write_text(content, encoding="utf-8")
+    return fasta_file
+
+
+@pytest.fixture
+def mock_load(monkeypatch):
+    """Stub the base SampleSeqs.load() so it doesn't trigger true file reads."""
+    monkeypatch.setattr(SampleSeqs, "load", lambda self: None)
+
+
+@pytest.fixture
+def mock_alignment_runners(monkeypatch):
+    """Stub out the actual alignment processing functions."""
+    mock_msa = MultipleSeqAlignment([])
+    monkeypatch.setattr("phyling.lib.align.run_hmmalign", lambda self, hmm: mock_msa)
+    monkeypatch.setattr("phyling.lib.align.run_muscle", lambda self, threads: mock_msa)
+    monkeypatch.setattr("phyling.lib.align.bp_mrtrans", lambda pep_msa, cds_data: mock_msa)
+    return mock_msa
+
+
+# -----------------------------------------------------------------------------
+# Tests
+# -----------------------------------------------------------------------------
+class TestOrthologSeqs:
+    def test_init_with_explicit_name(self, dummy_faa):
+        """Verify that initialization preserves an explicitly supplied name mapping."""
+        ortho = OrthologSeqs(file=dummy_faa, name="custom_name", seqtype="pep")
+        assert ortho.file == dummy_faa
+        assert ortho.name == "custom_name"
+        assert ortho.seqtype == SeqTypes.PEP
+
+    def test_init_with_auto_name(self, tmp_path):
+        """Ensure that omitting a name falls back securely to the file's base stem name."""
+        real_file = tmp_path / "marker_002.fa"
+        real_file.touch()
+
+        ortho = OrthologSeqs(file=real_file, seqtype="dna")
+        assert ortho.file == real_file
+        assert ortho.name == "marker_002.fa"
+        assert ortho.seqtype == SeqTypes.DNA
+
+    def test_load_initializes_empty_cds_attribute(self, dummy_fna, mock_load):
+        """Confirm the load lifecycle properly sets up data slots before reading structures."""
+        ortho = OrthologSeqs(dummy_fna)
+        # Before load, slot shouldn't exist or isn't initialized
+        with pytest.raises(AttributeError):
+            _ = ortho._data_cds
+
+        ortho.load()
+        assert isinstance(ortho._data_cds, list)
+        assert len(ortho._data_cds) == 0
+
+    def test_process_pep_seqs(self, dummy_faa):
+        """Ensure raw peptide items pass sequentially straight into the primary array data stack."""
+        ortho = OrthologSeqs(dummy_faa, seqtype="pep")
+        ortho._data = []
+
+        seq_block = MockDigitalSequenceBlock(["pep_seq1", "pep_seq2"])
+        ortho._process_pep_seqs(seq_block)
+
+        assert "pep_seq1" in ortho._data
+        assert "pep_seq2" in ortho._data
+
+    def test_process_cds_seqs_successful(self, dummy_fna):
+        """Verify clean CDS text reading converts data to translated peptides and stores back-mapped CDS templates."""
+        ortho = OrthologSeqs(dummy_fna, seqtype="dna")
+        ortho._data = []
+        ortho._data_cds = []
+
+        seq_block = MockDigitalSequenceBlock([MockDNASeq(name="gene_1", sequence="ATG", description="desc_1")])
+
+        ortho._process_cds_seqs(seq_block)
+
+        assert ortho._data[0] == "TRANSLATED_ATG"
+        assert len(ortho._data_cds) == 1
+        assert isinstance(ortho._data_cds[0], SeqRecord)
+        assert ortho._data_cds[0].id == "gene_1"
+        assert ortho._data_cds[0].seq == Seq("ATG")
+
+    def test_process_cds_seqs_with_invalid_lengths(self, dummy_fna, caplog):
+        """Test that translation anomalies trigger validation exceptions and get gracefully logged as warnings."""
+        ortho = OrthologSeqs(dummy_fna, seqtype="dna")
+        ortho._data = []
+        ortho._data_cds = []
+
+        broken_seq = MockDNASeq(name="broken_gene", sequence="AT")
+
+        def raise_value_error():
+            raise ValueError("Invalid codon length")
+
+        broken_seq.translate = raise_value_error
+
+        seq_block = MockDigitalSequenceBlock([broken_seq])
+
+        ortho._process_cds_seqs(seq_block)
+
+        assert len(ortho._data) == 0
+        assert len(ortho._data_cds) == 0
+        assert "have invalid length" in caplog.text
+
+    def test_search_raises_not_implemented_error(self, dummy_faa):
+        """Enforce the constraint that search operations must explicitly fail on this subclass."""
+        ortho = OrthologSeqs(dummy_faa)
+        with pytest.raises(NotImplementedError) as exc_info:
+            ortho.search("mock_hmms")
+        assert "Method is not implemented" in str(exc_info.value)
+
+    def test_align_hmmalign_missing_argument(self, dummy_faa):
+        """Ensure executing an HMM-driven alignment architecture without a reference profile fails safely."""
+        ortho = OrthologSeqs(dummy_faa)
+        with pytest.raises(ValueError) as exc_info:
+            ortho.align(method="hmmalign", hmm=None)
+        assert 'required "hmm" argument' in str(exc_info.value)
+
+    def test_align_invalid_method_argument(self, dummy_faa):
+        """Enforce string-literal verification constraints over unsupported foreign alignment backends."""
+        ortho = OrthologSeqs(dummy_faa)
+        with pytest.raises(ValueError) as exc_info:
+            ortho.align(method="unsupported_engine")  # type: ignore
+        assert "Argument method only accepts" in str(exc_info.value)
+
+    @pytest.mark.parametrize(
+        "fasta_fixture, seqtype, method",
+        [
+            ("dummy_faa", SeqTypes.PEP, "hmmalign"),
+            ("dummy_faa", SeqTypes.PEP, "muscle"),
+            ("dummy_fna", SeqTypes.DNA, "hmmalign"),
+            ("dummy_fna", SeqTypes.DNA, "muscle"),
+        ],
+    )
+    def test_align_execution_flows(self, fasta_fixture, seqtype, method, request, mock_alignment_runners):
+        """Validate cross-combinations of text-types and backend align engines compute successfully."""
+        dummy_fasta = request.getfixturevalue(fasta_fixture)
+        ortho = OrthologSeqs(dummy_fasta)
+        ortho._seqtype = seqtype
+        ortho._data_cds = []
+
+        mock_hmm = "mock_hmm_profile_object"
+        res = ortho.align(method=method, hmm=mock_hmm, threads=2)
+
+        assert isinstance(res, MultipleSeqAlignment)
 
 
 # class TestOrthologs:
