@@ -680,14 +680,14 @@ class SearchHitsManager:
 
                 # Pre-allocate a list to hold SeqRecord objects
                 # Using a list is fine here as we just need a temporary pointer buffer
-                loaded_seqs: list[SeqRecord] = [None] * len(self.hmm_ids)  # type: ignore
+                loaded_seqs: list[SeqRecord] = [None] * len(self._seqid_arr)  # type: ignore
 
                 # 1. Group by Sample (Minimize File Open/Close)
                 # Find all unique sample IDs actually present in the current data
                 unique_sample_indices = np.unique(self._sample_arr)
-
+                rev_samp = {v: k for k, v in self._samples.items()}
                 for s_idx in unique_sample_indices:
-                    sample_obj = self._samples[s_idx]
+                    sample_obj = rev_samp[s_idx]
                     # Find integer indices in the array belonging to this sample
                     hit_indices = np.where(self._sample_arr == s_idx)[0]
 
@@ -695,8 +695,9 @@ class SearchHitsManager:
 
                 # 2. Group by HMM (Write Ortholog FASTA files)
                 unique_hmm_indices = np.unique(self._hmm_arr)
+                rev_orth = {v: k for k, v in self._orthologs.items()}
                 for h_idx in unique_hmm_indices:
-                    hmm_name = self._orthologs[h_idx]
+                    hmm_name = rev_orth[h_idx]
                     # Find hit indices belonging to this HMM
                     hit_indices = np.where(self._hmm_arr == h_idx)[0]
 
