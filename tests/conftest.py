@@ -39,6 +39,13 @@ def hide_metadata(persistent_tmp_path: Path):
     obj.unpack_metadata()
 
 
+@pytest.fixture(scope="session")
+def real_search_hits():
+    """Shared container to hold hits generated during the search integration phase."""
+    state = {"hits": None}
+    return state
+
+
 @pytest.fixture(scope="class")
 def class_shared_tmpdir(tmp_path_factory: pytest.TempPathFactory):
     return tmp_path_factory.mktemp("shared_tmpdir")
