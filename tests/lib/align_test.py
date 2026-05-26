@@ -28,9 +28,17 @@ from phyling.lib.align import (
 )
 
 BASE_DB = Path("tests/database/poxviridae_odb10")
-HMM_FILE = BASE_DB / "hmms" / "10at10240.hmm"
 HMM_DIR = BASE_DB / "hmms"
 CUTOFF_FILE = BASE_DB / "scores_cutoff"
+
+DATA_DIR = Path("tests/data")
+PEP_FASTA_DIR = DATA_DIR / "pep" / "bgzf"
+CDS_FASTA_DIR = DATA_DIR / "cds" / "bgzf"
+PEP_FASTA = tuple(PEP_FASTA_DIR.iterdir())
+CDS_FASTA = tuple(CDS_FASTA_DIR.iterdir())
+
+PEP_MFA = tuple((DATA_DIR / "mfa").glob("*.faa"))
+CDS_MFA = tuple((DATA_DIR / "mfa").glob("*.fna"))
 
 
 class TestHMMMarkerSet:
@@ -116,9 +124,6 @@ class TestHMMMarkerSet:
             marker_set.set_cutoffs([1, 2, 3])
 
 
-# --- Fixtures ---
-
-
 @pytest.fixture(scope="module")
 def hmms_no_cutoff() -> HMMMarkerSet:
     """Load HMMMarkerSet without bitscore cutoffs."""
@@ -132,10 +137,8 @@ def hmms_with_cutoff() -> HMMMarkerSet:
 
 
 class TestSampleSeqs:
-    # --- Paths ---
-    data_dir = Path("tests/data")
-    pep_fasta = data_dir / "pep" / "Monkeypox_virus.faa.gz"
-    cds_fasta = data_dir / "cds" / "Monkeypox_virus.fna.gz"
+    pep_fasta = PEP_FASTA[0]
+    cds_fasta = CDS_FASTA[0]
 
     def test_init_pep(self):
         """Test initialization and lazy loading of peptide sequences."""
@@ -187,13 +190,13 @@ class TestSampleSeqs:
     def test_eq_lt(self):
         a = SampleSeqs(self.pep_fasta)
         b = SampleSeqs(self.pep_fasta)
-        c = SampleSeqs(self.data_dir / "pep" / "bgzf" / "Anomala_cuprea_entomopoxvirus.faa.gz")
-        assert a == b > c
+        c = SampleSeqs(DATA_DIR / "pep" / "Monkeypox_virus.faa.gz")
+        assert a == b < c
 
     def test_eq_lt_seqtypeerror(self):
         a = SampleSeqs(self.pep_fasta)
         b = SampleSeqs(self.cds_fasta)
-        c = SampleSeqs(self.data_dir / "pep" / "bgzf" / "Anomala_cuprea_entomopoxvirus.faa.gz")
+        c = SampleSeqs(DATA_DIR / "pep" / "Monkeypox_virus.faa.gz")
         with pytest.raises(SeqtypeError, match="Items represent different seqtypes"):
             a == b
         with pytest.raises(SeqtypeError, match="Items represent different seqtypes"):
@@ -240,7 +243,7 @@ class TestSampleSeqs:
         """Test that the class logs warnings for invalid CDS lengths."""
         # If you have a known 'bad' CDS file, use it here.
         # Otherwise, this just ensures the process finishes.
-        sample = SampleSeqs(self.data_dir / "cds" / "Monkeypox_virus_with_bad_seq.fna", seqtype="dna")
+        sample = SampleSeqs(DATA_DIR / "cds" / "Monkeypox_virus_with_bad_seq.fna", seqtype="dna")
         sample.load()
 
         # check if logger captured the warning.
@@ -248,7 +251,7 @@ class TestSampleSeqs:
 
 
 class TestSampleList:
-    files = tuple(file for file in Path("tests/data/pep/bgzf").iterdir())
+    files = PEP_FASTA
     names = tuple(f"name_{i}" for i in range(len(files)))
 
     def mock_helper(self, sample, hmms, evalue, threads):
@@ -297,8 +300,6 @@ class TestSampleList:
         with pytest.raises(SeqtypeError, match="Items represent different seqtypes"):
             SampleList(mixed_seqtypes_files)
 
-    # --- Search Orchestration Tests (Mocked) ---
-
     def test_search_sequential_logic(self, hmms_with_cutoff: HMMMarkerSet, monkeypatch, caplog: pytest.LogCaptureFixture):
         """Test sequential search mode logic."""
         sl = SampleList(self.files)
@@ -338,20 +339,18 @@ class TestSampleList:
 
     # --- Integration Test (Real Search) ---
 
-    @pytest.mark.slow
-    @pytest.mark.dependency(name="search_integration")
-    def test_search_integration_real_data(self, hmms_with_cutoff: HMMMarkerSet, real_search_hits):
-        """A real search against the poxviridae database (No mocks)."""
-        # Load real samples
-        sl = SampleList(self.files)
+    # @pytest.mark.slow
+    # @pytest.mark.dependency(name="search_integration")
+    # def test_search_integration_real_data(self, hmms_with_cutoff: HMMMarkerSet, real_search_hits):
+    #     """A real search against the poxviridae database (No mocks)."""
+    #     # Load real samples
+    #     sl = SampleList(self.files)
 
-        # Perform search
-        results = sl.search(hmms_with_cutoff, evalue=1e-10, jobs=1)
+    #     # Perform search
+    #     results = sl.search(hmms_with_cutoff, evalue=1e-10, jobs=1)
 
-        real_search_hits["hits"] = results
-
-        assert isinstance(results, list)
-        assert isinstance(results[0], SearchHit)
+    #     assert isinstance(results, list)
+    #     assert isinstance(results[0], SearchHit)
 
 
 class MockSampleSeqs:
@@ -386,6 +385,13 @@ def standard_hits(sample_a, sample_b):
         SearchHit(hmm="HMM_1", sample=sample_b, seqid="seq_02"),
         SearchHit(hmm="HMM_2", sample=sample_a, seqid="seq_03"),
     ]
+
+
+@pytest.fixture(scope="class")
+def real_search_hits(hmms_with_cutoff):
+    sl = SampleList(PEP_FASTA[:3])
+    results = sl.search(hmms_with_cutoff, evalue=1e-10, jobs=1)
+    return results
 
 
 class TestSearchHitsManager:
@@ -505,14 +511,13 @@ class TestSearchHitsManager:
         with pytest.raises(EmptyWarning):
             manager.filter(drop_samples=["Sample_A", "Sample_B"])
 
-    @pytest.mark.dependency(depends=["search_integration"])
+    # @pytest.mark.dependency(depends=["search_integration"])
     def test_load_allocates_temporary_directory(self, real_search_hits):
         """Verify that calling load provisions a physical temporary directory on disk."""
-        hits = real_search_hits["hits"]
-        if not hits:
-            pytest.fail("Shared integration hits were not properly captured.")
+        if not real_search_hits:
+            pytest.fail("Fixture real_search_hits were not properly captured.")
 
-        manager = SearchHitsManager(hits)
+        manager = SearchHitsManager(real_search_hits)
 
         # Verify that prior to loading, no live directory tracking handles exist
         assert manager._mfa_dir is None
@@ -528,13 +533,13 @@ class TestSearchHitsManager:
         assert mfa_path.exists()
         assert mfa_path.is_dir()
 
-    @pytest.mark.dependency(depends=["search_integration"])
+    # @pytest.mark.dependency(depends=["search_integration"])
     def test_unload_and_destruction_cleans_filesystem(self, real_search_hits):
         """Verify that unload and object garbage collection completely purge disk files."""
-        hits = real_search_hits["hits"]
-        manager = SearchHitsManager(hits)
+        manager = SearchHitsManager(real_search_hits)
 
         manager.load()
+        assert manager._mfa_dir is not None
         mfa_path = Path(manager._mfa_dir.name)
         assert mfa_path.exists()
 
@@ -545,13 +550,13 @@ class TestSearchHitsManager:
         assert manager._mfa_dir is None
         assert not mfa_path.exists()
 
-    @pytest.mark.dependency(depends=["search_integration"])
+    # @pytest.mark.dependency(depends=["search_integration"])
     def test_destructor_cleanup_fallback(self, real_search_hits):
         """Ensure the __del__ magic method acts as a safety valve to prevent storage leaks."""
-        hits = real_search_hits["hits"]
-        manager = SearchHitsManager(hits)
+        manager = SearchHitsManager(real_search_hits)
 
         manager.load()
+        assert manager._mfa_dir is not None
         mfa_path = Path(manager._mfa_dir.name)
         assert mfa_path.exists()
 
@@ -635,11 +640,6 @@ class MockDigitalSequenceBlock(list):
     pass
 
 
-# -----------------------------------------------------------------------------
-# Fixtures
-# -----------------------------------------------------------------------------
-
-
 @pytest.fixture
 def mock_alignment_runners(monkeypatch):
     """Stub out the actual alignment processing functions."""
@@ -650,30 +650,27 @@ def mock_alignment_runners(monkeypatch):
     return mock_msa
 
 
-# -----------------------------------------------------------------------------
-# Tests
-# -----------------------------------------------------------------------------
 class TestOrthologSeqs:
-    dummy_faa = Path("tests/data/mfa/10at10240.faa")
-    dummy_fna = Path("tests/data/mfa/10at10240.fna")
+    pep_mfa = PEP_MFA[0]
+    cds_mfa = CDS_MFA[0]
 
     def test_init_with_explicit_name(self):
         """Verify that initialization preserves an explicitly supplied name mapping."""
-        ortho = OrthologSeqs(file=self.dummy_faa, name="custom_name", seqtype="pep")
-        assert ortho.file == self.dummy_faa.absolute()
+        ortho = OrthologSeqs(file=self.pep_mfa, name="custom_name", seqtype="pep")
+        assert ortho.file == self.pep_mfa.absolute()
         assert ortho.name == "custom_name"
         assert ortho.seqtype == SeqTypes.PEP
 
     def test_init_with_auto_name(self):
         """Ensure that omitting a name falls back securely to the file name."""
-        ortho = OrthologSeqs(file=self.dummy_fna, seqtype="dna")
-        assert ortho.file == self.dummy_fna.absolute()
+        ortho = OrthologSeqs(file=self.cds_mfa, seqtype="dna")
+        assert ortho.file == self.cds_mfa.absolute()
         assert ortho.name == "10at10240.fna"
         assert ortho.seqtype == SeqTypes.DNA
 
     def test_load_initializes_empty_cds_attribute(self):
         """Confirm the load lifecycle properly sets up data slots before reading structures."""
-        ortho = OrthologSeqs(self.dummy_fna)
+        ortho = OrthologSeqs(self.cds_mfa)
         # Before load, slot shouldn't exist or isn't initialized
         with pytest.raises(AttributeError):
             _ = ortho._data_cds
@@ -684,7 +681,7 @@ class TestOrthologSeqs:
 
     def test_process_pep_seqs(self):
         """Ensure raw peptide items pass sequentially straight into the primary array data stack."""
-        ortho = OrthologSeqs(self.dummy_faa, seqtype="pep")
+        ortho = OrthologSeqs(self.pep_mfa, seqtype="pep")
         ortho.load()
 
         assert len(ortho._data) == 5
@@ -692,7 +689,7 @@ class TestOrthologSeqs:
 
     def test_process_cds_seqs_successful(self):
         """Verify clean CDS text reading converts data to translated peptides and stores back-mapped CDS templates."""
-        ortho = OrthologSeqs(self.dummy_fna, seqtype="dna")
+        ortho = OrthologSeqs(self.cds_mfa, seqtype="dna")
         ortho.load()
 
         assert len(ortho._data) == 5
@@ -703,7 +700,7 @@ class TestOrthologSeqs:
 
     def test_process_cds_seqs_with_invalid_lengths(self, caplog):
         """Test that translation anomalies trigger validation exceptions and get gracefully logged as warnings."""
-        ortho = OrthologSeqs(self.dummy_fna, seqtype="dna")
+        ortho = OrthologSeqs(self.cds_mfa, seqtype="dna")
         ortho._data = []
         ortho._data_cds = []
 
@@ -724,21 +721,21 @@ class TestOrthologSeqs:
 
     def test_search_raises_not_implemented_error(self, hmms_with_cutoff):
         """Enforce the constraint that search operations must explicitly fail on this subclass."""
-        ortho = OrthologSeqs(self.dummy_faa)
+        ortho = OrthologSeqs(self.pep_mfa)
         with pytest.raises(NotImplementedError) as exc_info:
             ortho.search(hmms_with_cutoff)
         assert "Method is not implemented" in str(exc_info.value)
 
     def test_align_hmmalign_missing_argument(self):
         """Ensure executing an HMM-driven alignment architecture without a reference profile fails safely."""
-        ortho = OrthologSeqs(self.dummy_faa)
+        ortho = OrthologSeqs(self.pep_mfa)
         with pytest.raises(ValueError) as exc_info:
             ortho.align(method="hmmalign", hmm=None)
         assert 'required "hmm" argument' in str(exc_info.value)
 
     def test_align_invalid_method_argument(self):
         """Enforce string-literal verification constraints over unsupported foreign alignment backends."""
-        ortho = OrthologSeqs(self.dummy_faa)
+        ortho = OrthologSeqs(self.pep_mfa)
         with pytest.raises(ValueError) as exc_info:
             ortho.align(method="unsupported_engine")  # type: ignore
         assert "Argument method only accepts" in str(exc_info.value)
@@ -746,16 +743,16 @@ class TestOrthologSeqs:
     @pytest.mark.parametrize(
         "fasta_attr_name, seqtype, method",
         [
-            ("dummy_faa", SeqTypes.PEP, "hmmalign"),
-            ("dummy_faa", SeqTypes.PEP, "muscle"),
-            ("dummy_fna", SeqTypes.DNA, "hmmalign"),
-            ("dummy_fna", SeqTypes.DNA, "muscle"),
+            ("pep_mfa", SeqTypes.PEP, "hmmalign"),
+            ("pep_mfa", SeqTypes.PEP, "muscle"),
+            ("cds_mfa", SeqTypes.DNA, "hmmalign"),
+            ("cds_mfa", SeqTypes.DNA, "muscle"),
         ],
     )
     def test_align_execution_flows(self, fasta_attr_name, seqtype, method, hmms_with_cutoff, mock_alignment_runners):
         """Validate cross-combinations of text-types and backend align engines compute successfully."""
-        dummy_fasta = getattr(self, fasta_attr_name)
-        ortho = OrthologSeqs(dummy_fasta)
+        mfa = getattr(self, fasta_attr_name)
+        ortho = OrthologSeqs(mfa)
         ortho._seqtype = seqtype
         ortho._data_cds = []
 
@@ -770,13 +767,8 @@ def mock_align_helper(ortholog_seq, hmms, method, threads):
     return MultipleSeqAlignment([])
 
 
-# -----------------------------------------------------------------------------
-# Fixtures
-# -----------------------------------------------------------------------------
-
-
 @pytest.fixture
-def mock_pipeline_dependencies(monkeypatch):
+def mock_align_dependencies(monkeypatch):
     """Patches base class methods and the alignment worker engine."""
     # Prevent base class from trying to read or unpack actual files during init/getitem
     monkeypatch.setattr(_abc.SeqDataListABC, "__init__", lambda self, data, names, seqtype: None)
@@ -795,18 +787,18 @@ def mock_pipeline_dependencies(monkeypatch):
 
 
 class TestOrthologList:
-    dummy_faa = [Path("tests/data/mfa/10at10240.faa"), Path("tests/data/mfa/14at10240.faa")]
-    dummy_fna = [Path("tests/data/mfa/10at10240.fna"), Path("tests/data/mfa/14at10240.faa")]
+    pep_mfa = PEP_MFA
+    cds_mfa = CDS_MFA
 
     def test_init_bound_class_assignment(self):
         """Verify that initialization sets the correct internal target class type."""
         # Partially patch init to let hasattr check fire normally
-        ortho_list = OrthologList(data=self.dummy_faa, seqtype="pep")
+        ortho_list = OrthologList(data=self.pep_mfa, seqtype="pep")
         assert ortho_list._bound_class is OrthologSeqs
 
     def test_getitem_passthrough(self):
         """Ensure that indexing or fetching keys safely proxies up to the base ABC container."""
-        ortho_list = OrthologList(self.dummy_faa)
+        ortho_list = OrthologList(self.pep_mfa)
 
         # Accessing via index or text label should yield an OrthologSeqs interface instance
         result = ortho_list[0]
@@ -818,7 +810,7 @@ class TestOrthologList:
     )
     def test_align_jobs_out_of_bounds_raises_error(self, jobs):
         """Enforce range validation bounds on process task distribution counters."""
-        ortho_list = OrthologList(self.dummy_faa)
+        ortho_list = OrthologList(self.pep_mfa)
 
         # Length is mocked to 2. Setting jobs to 0 or 3 should trigger a validation crash
         with pytest.raises(RuntimeError) as exc_info:
@@ -827,7 +819,7 @@ class TestOrthologList:
 
     def test_align_sequential_mode_flow(self, hmms_with_cutoff, monkeypatch, caplog):
         """Verify that processing runs sequentially when jobs=1 and updates logs."""
-        ortho_list = OrthologList(self.dummy_faa)
+        ortho_list = OrthologList(self.pep_mfa)
 
         monkeypatch.setattr("phyling.lib.align._align_helper", mock_align_helper)
 
@@ -841,7 +833,7 @@ class TestOrthologList:
 
     def test_align_parallel_threadpool_mode_flow(self, monkeypatch, caplog):
         """Confirm multiprocess threading pool contexts instantiate and process cleanly."""
-        ortho_list = OrthologList(self.dummy_faa)
+        ortho_list = OrthologList(self.pep_mfa)
 
         monkeypatch.setattr("phyling.lib.align._align_helper", mock_align_helper)
 
@@ -860,7 +852,7 @@ class TestOrthologList:
 
     def test_align_exception_handling_logs_and_re_raises(self, monkeypatch, caplog):
         """Verify that pipeline execution failures register logs correctly before throwing exceptions."""
-        ortho_list = OrthologList(self.dummy_faa)
+        ortho_list = OrthologList(self.pep_mfa)
 
         # Force the worker call to throw an unexpected engine failure
         def crashing_helper(*args, **kwargs):
@@ -916,7 +908,7 @@ class MockTopHits(list):
 
 
 class TestRunHmmsearch:
-    def test_run_hmmsearch_uses_evalue_when_no_cutoffs(self, sample_a: SampleSeqs, hmms_no_cutoff, mock_hmmsearch):
+    def test_run_hmmsearch_uses_evalue_when_no_cutoffs(self, sample_a, hmms_no_cutoff, mock_hmmsearch):
         """Verify that E-value thresholds are applied when trusted cutoffs are missing."""
         mock_hmmsearch.return_hits = []
 
@@ -926,7 +918,7 @@ class TestRunHmmsearch:
         assert mock_hmmsearch.captured_kwargs["E"] == 1e-5
         assert "bit_cutoffs" not in mock_hmmsearch.captured_kwargs
 
-    def test_run_hmmsearch_uses_trusted_cutoffs(self, sample_a: SampleSeqs, hmms_with_cutoff, mock_hmmsearch):
+    def test_run_hmmsearch_uses_trusted_cutoffs(self, sample_a, hmms_with_cutoff, mock_hmmsearch):
         """Ensure bit_cutoffs flag shifts to 'trusted' when reference cutoffs are present."""
         mock_hmmsearch.return_hits = []
 
@@ -973,8 +965,8 @@ class TestRunHmmsearch:
 @pytest.fixture(scope="module")
 def get_orthologseqs():
     """Intercepts load_msa to return a genuine BioPython MSA without reading disk."""
-    dummy_faa = Path("tests/data/mfa/10at10240.faa")
-    ortho = OrthologSeqs(dummy_faa)
+    pep_mfa = PEP_MFA[0]
+    ortho = OrthologSeqs(pep_mfa)
     ortho.load()
     return ortho
 
@@ -1080,7 +1072,7 @@ class MockMuscleRunner:
 
 
 @pytest.fixture
-def spy_muscle_runner(monkeypatch):
+def mock_muscle_runner(monkeypatch):
     """Intercepts and records instantiations/executions of the Muscle wrapper."""
     captured_instances = []
 
@@ -1110,14 +1102,14 @@ def mock_load_msa(monkeypatch):
 
 
 class TestRunMuscle:
-    def test_run_muscle_successful_flow(self, get_orthologseqs, spy_muscle_runner, mock_load_msa):
+    def test_run_muscle_successful_flow(self, get_orthologseqs, mock_muscle_runner, mock_load_msa):
         """Verify standard successful execution flow, parameter mapping, and typing assertions."""
         # 1. Fire execution path with custom thread requirements
         result = run_muscle(get_orthologseqs, threads=4)
 
         # 2. Check that the binary wrapper constructor was safely hit
-        assert len(spy_muscle_runner) == 1
-        runner_spy = spy_muscle_runner[0]
+        assert len(mock_muscle_runner) == 1
+        runner_spy = mock_muscle_runner[0]
 
         assert runner_spy.threads == 4
         assert runner_spy.run_called is True
@@ -1126,7 +1118,7 @@ class TestRunMuscle:
         assert isinstance(result, MultipleSeqAlignment)
         assert result.annotations == {"seqtype": SeqTypes.PEP}
 
-    def test_run_muscle_logs_on_completion(self, get_orthologseqs, spy_muscle_runner, caplog, mock_load_msa):
+    def test_run_muscle_logs_on_completion(self, get_orthologseqs, mock_muscle_runner, caplog, mock_load_msa):
         """Ensure completion triggers accurate downstream debugging trace alerts."""
         with caplog.at_level(logging.DEBUG):
             _ = run_muscle(get_orthologseqs, threads=1)
