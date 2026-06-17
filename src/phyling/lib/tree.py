@@ -442,7 +442,7 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
         if tempdir:
             return self.tree
         else:
-            return Path(runner.result)
+            return Path(tree_file)
 
     @_check_attributes("_tree")
     def compute_toverr(self) -> None:
