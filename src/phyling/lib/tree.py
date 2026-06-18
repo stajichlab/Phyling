@@ -758,7 +758,7 @@ class MFA2TreeList(_abc.SeqDataListABC[MFA2Tree]):
 
         # Fill missing taxon on some of the MSAs
         logger.info("Filling missing taxon...")
-        func = partial(_fill_missing_taxon, samples)
+        func = partial(fill_missing_taxon, samples)
         if threads > 1:
             with ThreadPool(threads) as pool:
                 msa_list = list(pool.imap(func, msa_list))
@@ -965,6 +965,29 @@ def branch_concordance(
         return Path(runner.result)
 
 
+def fill_missing_taxon(samples: Sequence[str], msa: MultipleSeqAlignment) -> MultipleSeqAlignment:
+    """Add gap-only sequences to the alignment for missing taxa.
+
+    Args:
+        samples (Sequence[str]): List of all expected taxa.
+        msa (MultipleSeqAlignment): The existing multiple sequence alignment.
+
+    Returns:
+        MultipleSeqAlignment: The updated alignment with added gap-only sequences for missing taxa.
+    """
+    missing = set(samples) - {seq.id for seq in msa}
+    for sample in missing:
+        msa.append(
+            SeqRecord(
+                Seq("-" * msa.get_alignment_length()),
+                id=sample,
+                description="",
+            )
+        )
+    msa.sort()
+    return msa
+
+
 def _compute_toverr_helper(instance: MFA2Tree) -> None:
     """Helper function to run the `compute_toverr` method on an MFA2Tree instance.
 
@@ -1022,26 +1045,3 @@ def _build_helper(
         instance.build(method, output, model, noml=noml, bs=bs, scfl=scfl, seed=seed, threads_max=threads)
     finally:
         mfa2tree_logger.setLevel(original_level)
-
-
-def _fill_missing_taxon(samples: Sequence[str], msa: MultipleSeqAlignment) -> MultipleSeqAlignment:
-    """Add gap-only sequences to the alignment for missing taxa.
-
-    Args:
-        samples (Sequence[str]): List of all expected taxa.
-        msa (MultipleSeqAlignment): The existing multiple sequence alignment.
-
-    Returns:
-        MultipleSeqAlignment: The updated alignment with added gap-only sequences for missing taxa.
-    """
-    missing = set(samples) - {seq.id for seq in msa}
-    for sample in missing:
-        msa.append(
-            SeqRecord(
-                Seq("-" * msa.get_alignment_length()),
-                id=sample,
-                description="",
-            )
-        )
-    msa.sort()
-    return msa

@@ -32,8 +32,8 @@ class Saturation(Phykit_saturation):
         patristic_distances, uncorrected_distances = self.loop_through_combos_and_calculate_pds_and_pis(
             combos,
             alignment,
-            tree,
-            False,  # type: ignore
+            tree,  # type: ignore
+            False,
         )
 
         model = LinearRegression(fit_intercept=False)
