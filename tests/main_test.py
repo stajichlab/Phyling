@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import logging
 import sys
 from argparse import Namespace
 from pathlib import Path
@@ -110,7 +109,7 @@ def args_factory() -> Namespace:
         defaults.update(kwargs)
         return Namespace(**defaults)
 
-    return create_args
+    return create_args  # type: ignore
 
 
 @pytest.fixture

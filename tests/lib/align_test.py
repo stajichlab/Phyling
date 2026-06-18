@@ -1,3 +1,5 @@
+"""Tests for the align module library."""
+
 from __future__ import annotations
 
 import logging
@@ -88,7 +90,7 @@ class TestHMMMarkerSet:
     def test_init_runtime_error_no_data(self):
         """Verify check for cutoff_file without data."""
         with pytest.raises(RuntimeError, match="Cannot specify cutoff_file without data"):
-            HMMMarkerSet(data=None, cutoff_file=CUTOFF_FILE)
+            HMMMarkerSet(data=None, cutoff_file=CUTOFF_FILE)  # type: ignore
 
     def test_getitem_by_name_real(self):
         """Verify string-based retrieval using real data."""
@@ -121,7 +123,7 @@ class TestHMMMarkerSet:
         marker_set = HMMMarkerSet(data=self.hmm_file)
         with pytest.raises(TypeError, match="Invalid cutoffs format"):
             # Passing an integer instead of path or dict
-            marker_set.set_cutoffs([1, 2, 3])
+            marker_set.set_cutoffs([1, 2, 3])  # type: ignore
 
 
 @pytest.fixture(scope="module")
@@ -157,7 +159,7 @@ class TestSampleSeqs:
         sample.load()
         assert len(sample) == len([x for x in sample])
         # Verify digital sequences are amino acids (Alphabet.amino codes are usually 0-20+)
-        assert sample._data.alphabet.is_amino()
+        assert sample._data.alphabet.is_amino()  # type: ignore
         assert sample.seqtype == "pep"
 
     def test_init_cds(self):
@@ -177,7 +179,7 @@ class TestSampleSeqs:
         sample.load()
         assert len(sample) == len([x for x in sample])
         # Even though input is DNA, _data should store translated Amino Acid sequences
-        assert sample._data.alphabet.is_amino()
+        assert sample._data.alphabet.is_amino()  # type: ignore
         assert sample.seqtype == "dna"
 
     def test_init_auto(self):
@@ -284,7 +286,7 @@ class TestSampleList:
 
     def test_init_typeerror(self):
         with pytest.raises(TypeError, match="int cannot be converted to SampleSeqs"):
-            SampleList([1, 2, 3])
+            SampleList([1, 2, 3])  # type: ignore
 
     def test_init_names_and_data_mismatched(self):
         """Ensure error if names provided without data or with different length."""
@@ -713,7 +715,7 @@ class TestOrthologSeqs:
 
         seq_block = MockDigitalSequenceBlock([broken_seq])
 
-        ortho._process_cds_seqs(seq_block)
+        ortho._process_cds_seqs(seq_block)  # type: ignore
 
         assert len(ortho._data) == 0
         assert len(ortho._data_cds) == 0
@@ -730,7 +732,7 @@ class TestOrthologSeqs:
         """Ensure executing an HMM-driven alignment architecture without a reference profile fails safely."""
         ortho = OrthologSeqs(self.pep_mfa)
         with pytest.raises(ValueError) as exc_info:
-            ortho.align(method="hmmalign", hmm=None)
+            ortho.align(method="hmmalign", hmm=None)  # type: ignore
         assert 'required "hmm" argument' in str(exc_info.value)
 
     def test_align_invalid_method_argument(self):
@@ -756,7 +758,7 @@ class TestOrthologSeqs:
         ortho._seqtype = seqtype
         ortho._data_cds = []
 
-        res = ortho.align(method=method, hmm=hmms_with_cutoff, threads=2)
+        res = ortho.align(method=method, hmm=hmms_with_cutoff, threads=2)  # type: ignore
 
         assert isinstance(res, MultipleSeqAlignment)
 
@@ -1215,7 +1217,7 @@ class TestBpMrtrans:
         cds_rec = MinimalSeqRecord(Seq("ATG"))
         cds_recs = [cds_rec]  # type: ignore
 
-        result = bp_mrtrans(pep_msa, cds_recs)
+        result = bp_mrtrans(pep_msa, cds_recs)  # type: ignore
 
         # Verify fallback properties mapped successfully
         assert result[0].id == "pep_id"
