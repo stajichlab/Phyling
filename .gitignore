@@ -165,3 +165,4 @@ example/*
 *.ipynb
 
 .vscode
+pyrefly.toml
