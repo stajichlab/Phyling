@@ -6,7 +6,7 @@ import logging
 import re
 from multiprocessing import Manager, Pool
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Sequence
 
 from Bio import SeqIO
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 @Timer.timer
 @check_threads
 def align(
-    inputs: str | Path | list[str | Path],
+    inputs: str | Path | Sequence[str | Path],
     output: str | Path,
     *,
     markerset: str | Path,
@@ -115,13 +115,13 @@ def align(
 
 
 def _args_check(
-    inputs: str | Path | list[str | Path],
+    inputs: str | Path | Sequence[str | Path],
     hmmmarkerset: str | Path,
     evalue: float,
     method: str,
 ) -> tuple[tuple[Path, ...], Path, float, str]:
     """Check and adjust the arguments passed in."""
-    if isinstance(inputs, list):
+    if isinstance(inputs, Sequence):
         inputs_tuple = tuple(Path(sample) for sample in inputs)
     else:
         inputs = Path(inputs)
