@@ -205,29 +205,29 @@ def class_monkeypatch():
 @pytest.fixture(scope="class")
 def mock_build_env(class_monkeypatch, tmpdir_factory):
     """Mocks all external runners, utilities, and file readers inside tree_builder."""
-    shared_tmp = tmpdir_factory.mktemp("tree_data")
+    shared_dir = tmpdir_factory.mktemp("tree_data")
 
     # 2. Create the MagicMocks
     mock_modelfinder = MagicMock()
     mock_modelfinder.return_value.result = "model"
 
     mock_fasttree = MagicMock()
-    ft_tree = shared_tmp / "ft_tree.nw"
+    ft_tree = shared_dir / "ft_tree.nw"
     ft_tree.write_text("ft_tree", encoding="utf-8")
     mock_fasttree.return_value.result = ft_tree
 
     mock_raxml = MagicMock()
-    raxml_tree = shared_tmp / "raxml_tree.nw"
+    raxml_tree = shared_dir / "raxml_tree.nw"
     raxml_tree.write_text("raxml_tree", encoding="utf-8")
     mock_raxml.return_value.result = raxml_tree
 
     mock_iqtree = MagicMock()
-    iqtree_tree = shared_tmp / "iqtree_tree.nw"
+    iqtree_tree = shared_dir / "iqtree_tree.nw"
     iqtree_tree.write_text("iqtree_tree", encoding="utf-8")
     mock_iqtree.return_value.result = iqtree_tree
 
     mock_bootstrap = MagicMock()
-    bootstrap_file = shared_tmp / "ufboot.nw"
+    bootstrap_file = shared_dir / "ufboot.nw"
     bootstrap_file.write_text("ufboot", encoding="utf-8")
     mock_bootstrap.return_value = bootstrap_file
 
@@ -237,7 +237,7 @@ def mock_build_env(class_monkeypatch, tmpdir_factory):
         spec=Tree,
         _mock_file_content=path.read_text(encoding="utf-8"),  # Optional: store the text inside the mock if needed
     )
-    concordance_file = shared_tmp / "concord.nw"
+    concordance_file = shared_dir / "concord.nw"
     concordance_file.write_text("concord", encoding="utf-8")
     mock_concordance.return_value = concordance_file
 
