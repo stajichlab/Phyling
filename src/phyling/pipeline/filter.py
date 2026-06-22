@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Sequence
 
 from ..lib import FileExts, SeqTypes, TreeMethods
 from ..lib._utils import Timer, check_threads
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 @Timer.timer
 @check_threads
 def filter(
-    inputs: str | Path | list[str | Path],
+    inputs: str | Path | Sequence[str | Path],
     output: str | Path,
     top_n_toverr: int,
     *,
@@ -28,16 +28,8 @@ def filter(
 ) -> None:
     """A pipeline that filter the multiple sequence alignment results through their treeness/RCVs."""
 
-    inputs_ = _input_check(inputs)
+    inputs_ = _input_check(inputs, top_n_toverr)
     output = Path(output)
-    if not 1 < top_n_toverr < len(inputs_):
-        if top_n_toverr == len(inputs_):
-            raise SystemExit("Argument top_n_toverr is equal to the number of inputs. Do not need filtering.")
-        elif len(inputs_) == 3:
-            detail_msg = "can only be 2 since there are only 3 inputs"
-        else:
-            detail_msg = f"should between 2 to {len(inputs_) - 1}"
-        raise ValueError(f"Argument top_n_toverr out of range. ({detail_msg})")
 
     logger.info("Found %s MSA fasta.", len(inputs_))
 
@@ -99,9 +91,9 @@ def filter(
     logger.info(f"{__name__.split('.')[-1].capitalize()} module done.")
 
 
-def _input_check(inputs: str | Path | list[str | Path]) -> tuple[Path, ...]:
+def _input_check(inputs: str | Path | Sequence[str | Path], top_n_toverr: int) -> tuple[Path, ...]:
     """Check and adjust the arguments passed in."""
-    if isinstance(inputs, list):
+    if isinstance(inputs, Sequence):
         inputs_tuple = tuple(Path(file) for file in inputs)
         input_dir = {file.parent for file in inputs_tuple}
         if len(input_dir) > 1:
@@ -117,4 +109,14 @@ def _input_check(inputs: str | Path | list[str | Path]) -> tuple[Path, ...]:
 
     if len(inputs_tuple) < 3:
         raise ValueError("Fewer than 3 inputs. Please directly build tree with your desired tree building software.")
+
+    if not 1 < top_n_toverr < len(inputs_tuple):
+        if top_n_toverr == len(inputs_tuple):
+            raise SystemExit("Argument top_n_toverr is equal to the number of inputs. Do not need filtering.")
+        elif len(inputs_tuple) == 3:
+            detail_msg = "can only be 2 since there are only 3 inputs"
+        else:
+            detail_msg = f"should between 2 to {len(inputs_tuple) - 1}"
+        raise ValueError(f"Invalid top_n_toverr. ({detail_msg})")
+
     return inputs_tuple
