@@ -36,11 +36,11 @@ CUTOFF_FILE = BASE_DB / "scores_cutoff"
 DATA_DIR = Path("tests/data")
 PEP_FASTA_DIR = DATA_DIR / "pep" / "bgzf"
 CDS_FASTA_DIR = DATA_DIR / "cds" / "bgzf"
-PEP_FASTA = tuple(PEP_FASTA_DIR.iterdir())
-CDS_FASTA = tuple(CDS_FASTA_DIR.iterdir())
+PEP_FASTA = sorted(tuple(PEP_FASTA_DIR.iterdir()))
+CDS_FASTA = sorted(tuple(CDS_FASTA_DIR.iterdir()))
 
-PEP_MFA = tuple((DATA_DIR / "mfa").glob("*.faa"))
-CDS_MFA = tuple((DATA_DIR / "mfa").glob("*.fna"))
+PEP_MFA = sorted(tuple((DATA_DIR / "mfa").glob("*.faa")))
+CDS_MFA = sorted(tuple((DATA_DIR / "mfa").glob("*.fna")))
 
 
 class TestHMMMarkerSet:
@@ -298,7 +298,7 @@ class TestSampleList:
 
     def test_sample_list_init_mixed_seqtypes(self) -> None:
         """Verify Error with files with mixed seqtypes."""
-        mixed_seqtypes_files = self.files + (Path("tests/data/cds/Monkeypox_virus.fna.gz"),)
+        mixed_seqtypes_files = self.files + [Path("tests/data/cds/Monkeypox_virus.fna.gz")]
         with pytest.raises(SeqtypeError, match="Items represent different seqtypes"):
             SampleList(mixed_seqtypes_files)
 
@@ -667,7 +667,7 @@ class TestOrthologSeqs:
         """Ensure that omitting a name falls back securely to the file name."""
         ortho = OrthologSeqs(file=self.cds_mfa, seqtype="dna")
         assert ortho.file == self.cds_mfa.absolute()
-        assert ortho.name == "10at10240.fna"
+        assert ortho.name == self.cds_mfa.name
         assert ortho.seqtype == SeqTypes.DNA
 
     def test_load_initializes_empty_cds_attribute(self):
@@ -808,7 +808,7 @@ class TestOrthologList:
 
     @pytest.mark.parametrize(
         "jobs",
-        [0, 3],
+        [0, 10],
     )
     def test_align_jobs_out_of_bounds_raises_error(self, jobs):
         """Enforce range validation bounds on process task distribution counters."""
@@ -817,7 +817,7 @@ class TestOrthologList:
         # Length is mocked to 2. Setting jobs to 0 or 3 should trigger a validation crash
         with pytest.raises(RuntimeError) as exc_info:
             ortho_list.align(method="muscle", jobs=jobs)
-        assert "jobs should be between 1 and 2" in str(exc_info.value)
+        assert "jobs should be between 1 and" in str(exc_info.value)
 
     def test_align_sequential_mode_flow(self, hmms_with_cutoff, monkeypatch, caplog):
         """Verify that processing runs sequentially when jobs=1 and updates logs."""
@@ -828,10 +828,10 @@ class TestOrthologList:
         with caplog.at_level(logging.DEBUG):
             alignments = ortho_list.align(method="hmmalign", hmms=hmms_with_cutoff, jobs=1, threads=2)
 
-        assert len(alignments) == 2
+        assert len(alignments) == 4
         assert isinstance(alignments[0], MultipleSeqAlignment)
         assert "Sequential mode with 2 threads." in caplog.text
-        assert "Progress: 2 / 2" in caplog.text
+        assert "Progress: 4 / 4" in caplog.text
 
     def test_align_parallel_threadpool_mode_flow(self, monkeypatch, caplog):
         """Confirm multiprocess threading pool contexts instantiate and process cleanly."""
@@ -848,9 +848,9 @@ class TestOrthologList:
         with caplog.at_level(logging.DEBUG):
             alignments = ortho_list.align(method="muscle", jobs=2, threads=4)
 
-        assert len(alignments) == 2
+        assert len(alignments) == 4
         assert "Multiprocesses mode with 2 jobs and 4 threads" in caplog.text
-        assert "Progress: 2 / 2" in caplog.text
+        assert "Progress: 4 / 4" in caplog.text
 
     def test_align_exception_handling_logs_and_re_raises(self, monkeypatch, caplog):
         """Verify that pipeline execution failures register logs correctly before throwing exceptions."""

@@ -17,8 +17,8 @@ from Bio.SeqRecord import SeqRecord
 from phyling.lib.tree import MFA2Tree, MFA2TreeList, bootstrap, branch_concordance, fill_missing_taxon
 
 DATA_DIR = Path("tests/data")
-PEP_MSA = tuple((DATA_DIR / "msa").glob("*.faa"))
-CDS_MSA = tuple((DATA_DIR / "msa").glob("*.fna"))
+PEP_MSA = sorted(tuple((DATA_DIR / "msa").glob("*.faa")))
+CDS_MSA = sorted(tuple((DATA_DIR / "msa").glob("*.fna")))
 
 
 @pytest.fixture

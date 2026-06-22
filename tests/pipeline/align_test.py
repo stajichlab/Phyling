@@ -22,13 +22,11 @@ CUTOFF_FILE = BASE_DB / "scores_cutoff"
 DATA_DIR = Path("tests/data")
 PEP_FASTA_DIR = DATA_DIR / "pep" / "bgzf"
 CDS_FASTA_DIR = DATA_DIR / "cds" / "bgzf"
-PEP_FASTA = tuple(PEP_FASTA_DIR.iterdir())
-CDS_FASTA = tuple(CDS_FASTA_DIR.iterdir())
+PEP_FASTA = sorted(tuple(PEP_FASTA_DIR.iterdir()))
+CDS_FASTA = sorted(tuple(CDS_FASTA_DIR.iterdir()))
 
-PEP_MFA = tuple((DATA_DIR / "mfa").glob("*.faa"))
-CDS_MFA = tuple((DATA_DIR / "mfa").glob("*.fna"))
-
-# Import the engine directly
+PEP_MFA = sorted(tuple((DATA_DIR / "mfa").glob("*.faa")))
+CDS_MFA = sorted(tuple((DATA_DIR / "mfa").glob("*.fna")))
 
 
 # This runs once before any tests in this file execute
