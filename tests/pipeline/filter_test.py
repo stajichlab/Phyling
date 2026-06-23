@@ -25,12 +25,6 @@ PEP_MFA = sorted(tuple((MFA_DIR).glob("*.faa")))
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture()
-def shared_output_path(tmpdir_factory) -> Path:
-    shared_dir = tmpdir_factory.mktemp("filter_outputs")
-    return shared_dir
-
-
 @pytest.fixture
 def mock_treelist_gen(monkeypatch):
     """A factory fixture that preserves real file names and paths on mock elements."""
