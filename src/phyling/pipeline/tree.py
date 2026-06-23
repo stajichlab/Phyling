@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import shutil
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Sequence
 
 import matplotlib.pyplot as plt
 from Bio import Phylo
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 @Timer.timer
 @check_threads
 def tree(
-    inputs: str | Path | list[str | Path],
+    inputs: str | Path | Sequence[str | Path],
     output: str | Path,
     *,
     method: Literal["ft", "raxml", "iqtree"] = "ft",
@@ -73,13 +73,13 @@ def tree(
             new_partition_file = Path(modelfinder_runner.result)
             partition_file.unlink()
             partition_file.symlink_to(new_partition_file.parent.relative_to(partition_file.parent) / new_partition_file.name)
-            tree = concat_tree.build(
-                method, output / method, partition_file, bs=bs, scfl=scfl, seed=seed, threads=threads, threads_max=threads_max
-            )
+            model = partition_file
         else:
-            tree = concat_tree.build(
-                method, output / method, "AUTO", bs=bs, scfl=scfl, seed=seed, threads=threads, threads_max=threads_max
-            )
+            model = "AUTO"
+
+        tree = concat_tree.build(
+            method, output / method, model, bs=bs, scfl=scfl, seed=seed, threads=threads, threads_max=threads_max
+        )
 
     else:
         logger.info("Inference with consensus mode...")
@@ -104,9 +104,9 @@ def tree(
     logger.info(f"{__name__.split('.')[-1].capitalize()} module done.")
 
 
-def _input_check(inputs: str | Path | list) -> tuple[Path, ...]:
+def _input_check(inputs: str | Path | Sequence[str | Path]) -> tuple[Path, ...]:
     """Check and adjust the arguments passed in."""
-    if isinstance(inputs, list):
+    if isinstance(inputs, Sequence):
         inputs_tuple = tuple(Path(file) for file in inputs)
         input_dir = {file.parent for file in inputs_tuple}
         if len(input_dir) > 1:
