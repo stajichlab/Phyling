@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-from _pytest.monkeypatch import MonkeyPatch
 
 import phyling.pipeline.download as download_mod
 from phyling.pipeline.download import _wrapper, download
@@ -14,14 +12,6 @@ from phyling.pipeline.download import _wrapper, download
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture(scope="class", autouse=True)
-def patch_cfg_globally():
-    mp = MonkeyPatch()
-    mp.setattr("phyling.pipeline.download.CFG_DIRS", [Path("tests/database")])
-    yield
-    mp.undo()
 
 
 @pytest.fixture

@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import csv
-import hashlib
+import shutil
 import tarfile
 from io import BytesIO
 from pathlib import Path
@@ -11,22 +10,21 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import phyling.lib.download as download_mod
 from phyling.lib.download import BuscoParser, _fetch_url
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
 # ---------------------------------------------------------------------------
 
-FAKE_TSV = (
-    "bacteria_odb10\t2020-03-06\tabc123\tlineages\n"
-    "fungi_odb10\t2021-01-01\tdef456\tlineages\n"
-    "archaea_odb10\t2019-05-10\t111aaa\tother\n"  # should be ignored (not lineages)
+FAKE_ONLINE_METADATA = (
+    "bacteria_odb10\t2024-01-08\tbff9523df89980699c01e8f31e490496\tProkaryota\tlineages\n"
+    "bclasvirinae_odb10\t2024-01-08\t51a9dce485c577e575d411d10c566820\tVirus\tlineages\n"
+    "poxviridae_odb10\t2024-01-08\t4cb2e71a92b2088a0a0b1f4ff20f94ef\tVirus\tlineages\n"
+    "archaea_odb10\t2019-05-10\t111aaa\tother\tother\n"  # should be ignored (not lineages)
 )
 
-FAKE_LOCAL_METADATA = [
-    ["bacteria_odb10", "abc123"],
-    ["fungi_odb10", "oldmd5"],  # outdated
-]
+FAKE_LOCAL_METADATA = Path("tests/database/.metadata")
 
 
 def _make_tar_gz(name: str = "markerset_dir") -> bytes:
@@ -47,28 +45,21 @@ def _make_tar_gz(name: str = "markerset_dir") -> bytes:
     return buf.getvalue()
 
 
-def _write_metadata(directory: Path, rows: list[list[str]]) -> None:
-    """Write a metadata TSV file to *directory*."""
-    meta = directory / ".metadata"
-    with open(meta, "w", newline="") as f:
-        writer = csv.writer(f, delimiter="\t")
-        for row in rows:
-            writer.writerow(row)
-
-
 @pytest.fixture()
 def cfg_dir(tmp_path: Path) -> Path:
     """Return a temporary directory that acts as the primary config dir."""
-    return tmp_path / "cfg"
+    p = tmp_path / "global_config"
+    p.mkdir()
+    return p
 
 
 @pytest.fixture()
 def cfg_dir_with_metadata(cfg_dir: Path) -> Path:
-    cfg_dir.mkdir(parents=True)
-    _write_metadata(cfg_dir, FAKE_LOCAL_METADATA)
     # Create the markerset directories so the parser sees them as valid
-    (cfg_dir / "bacteria_odb10").mkdir()
-    (cfg_dir / "fungi_odb10").mkdir()
+    shutil.copy(FAKE_LOCAL_METADATA, cfg_dir / ".metadata")
+    for line in (cfg_dir / ".metadata").read_text(encoding="utf-8").splitlines():
+        dataset_name = line.split("\t")[0]
+        (cfg_dir / dataset_name).mkdir()
     return cfg_dir
 
 
@@ -79,13 +70,24 @@ def mock_fetch(monkeypatch):
 
     def _fake_fetch(url: str, timeout: int = 30) -> bytes:
         if "file_versions.tsv" in url:
-            return FAKE_TSV.encode()
+            return FAKE_ONLINE_METADATA.encode()
         # For markerset downloads return a valid tar.gz
         markerset = url.split("/")[-1].split(".")[0]
         return _make_tar_gz(markerset)
 
     monkeypatch.setattr("phyling.lib.download._fetch_url", _fake_fetch)
     return _fake_fetch
+
+
+@pytest.fixture()
+def mock_hashlib_gen():
+
+    def gen(fake_hash):
+        mock_hash = MagicMock()
+        mock_hash.md5.return_value.hexdigest.return_value = fake_hash
+        return mock_hash
+
+    return gen
 
 
 # ---------------------------------------------------------------------------
@@ -138,31 +140,29 @@ class TestFetchUrl:
 
 class TestBuscoParserInit:
     def test_online_metadata_parsed(self, cfg_dir, mock_fetch):
-        cfg_dir.mkdir(parents=True)
         with BuscoParser(cfg_dir) as bp:
             assert "bacteria_odb10" in bp.online
-            assert "fungi_odb10" in bp.online
+            assert "bclasvirinae_odb10" in bp.online
             # 'other' type should NOT be present
             assert "archaea_odb10" not in bp.online
 
     def test_local_metadata_empty_when_no_file(self, cfg_dir, mock_fetch):
-        cfg_dir.mkdir(parents=True)
         with BuscoParser(cfg_dir) as bp:
             assert bp.local == []
 
     def test_local_metadata_loaded(self, cfg_dir_with_metadata, mock_fetch):
         with BuscoParser(cfg_dir_with_metadata) as bp:
             local_names = [name.replace(" [Outdated]", "") for name in bp.local]
-            assert "bacteria_odb10" in local_names
-            assert "fungi_odb10" in local_names
+            assert "poxviridae_odb10" in local_names
+            assert "bclasvirinae_odb10" in local_names
 
-    def test_outdated_markerset_flagged(self, cfg_dir_with_metadata, mock_fetch):
+    def test_up_to_date_markerset(self, cfg_dir_with_metadata, mock_fetch):
         with BuscoParser(cfg_dir_with_metadata) as bp:
-            assert any("[Outdated]" in name for name in bp.local)
+            assert "poxviridae_odb10" in bp.local
 
-    def test_up_to_date_markerset_not_flagged(self, cfg_dir_with_metadata, mock_fetch):
+    def test_outdated_markerset(self, cfg_dir_with_metadata, mock_fetch):
         with BuscoParser(cfg_dir_with_metadata) as bp:
-            assert "bacteria_odb10" in bp.local  # md5 matches → no flag
+            assert "bclasvirinae_odb10 [Outdated]" in bp.local
 
     def test_no_network_graceful(self, cfg_dir, monkeypatch):
         """When the network is unavailable online metadata should be empty."""
@@ -172,7 +172,6 @@ class TestBuscoParserInit:
             "phyling.lib.download._fetch_url",
             lambda *a, **kw: (_ for _ in ()).throw(URLError("down")),
         )
-        cfg_dir.mkdir(parents=True)
         bp = BuscoParser(cfg_dir)
         assert bp.online == []
         bp.close()
@@ -185,7 +184,6 @@ class TestBuscoParserInit:
 
 class TestBuscoParserProperties:
     def test_online_returns_sorted_list(self, cfg_dir, mock_fetch):
-        cfg_dir.mkdir(parents=True)
         with BuscoParser(cfg_dir) as bp:
             assert bp.online == sorted(bp.online)
 
@@ -201,14 +199,11 @@ class TestBuscoParserProperties:
 
 
 class TestBuscoParserDownload:
-    def test_download_new_markerset(self, monkeypatch, cfg_dir):
-        cfg_dir.mkdir(parents=True)
+    def test_download_new_markerset(self, monkeypatch, mock_hashlib_gen, mock_fetch, cfg_dir):
         markerset = "bacteria_odb10"
-        tar_data = _make_tar_gz(markerset)
         with BuscoParser(cfg_dir) as bp:
-            monkeypatch.setattr("phyling.lib.download._fetch_url", lambda *a, **kw: tar_data)
-            # Use a real md5 so the check passes
-            bp._online_metadata[markerset]["md5"] = hashlib.md5(tar_data).hexdigest()
+            mock_hash = mock_hashlib_gen(bp._online_metadata[markerset]["md5"])
+            monkeypatch.setattr(download_mod, "hashlib", mock_hash)
             bp.download(markerset)
 
             assert markerset in bp._local_metadata
@@ -218,40 +213,32 @@ class TestBuscoParserDownload:
         import logging
 
         with BuscoParser(cfg_dir_with_metadata) as bp:
-            markerset = "bacteria_odb10"
-            # Ensure md5 matches so it is considered up-to-date
-            bp._online_metadata[markerset]["md5"] = "abc123"
+            markerset = "poxviridae_odb10"
 
             with caplog.at_level(logging.INFO, logger="phyling"):
                 bp.download(markerset)
 
             assert any("up to date" in msg.lower() for msg in caplog.messages)
 
-    def test_download_updates_outdated(self, monkeypatch, cfg_dir_with_metadata):
-        cfg_dir = cfg_dir_with_metadata
-        markerset = "fungi_odb10"
-        tar_data = _make_tar_gz(markerset)
-        with BuscoParser(cfg_dir) as bp:
-            monkeypatch.setattr("phyling.lib.download._fetch_url", lambda *a, **kw: tar_data)
-            new_md5 = hashlib.md5(tar_data).hexdigest()
-            bp._online_metadata[markerset]["md5"] = new_md5
+    def test_download_updates_outdated(self, monkeypatch, mock_hashlib_gen, mock_fetch, cfg_dir_with_metadata):
+        markerset = "bclasvirinae_odb10"
+        with BuscoParser(cfg_dir_with_metadata) as bp:
+            mock_hash = mock_hashlib_gen(bp._online_metadata[markerset]["md5"])
+            monkeypatch.setattr(download_mod, "hashlib", mock_hash)
             bp.download(markerset)
 
-            assert bp._local_metadata[markerset]["md5"] == new_md5
+            assert bp._local_metadata[markerset]["md5"] == bp._online_metadata[markerset]["md5"]
 
     def test_download_raises_on_unknown_markerset(self, cfg_dir, mock_fetch):
-        cfg_dir.mkdir(parents=True)
         with BuscoParser(cfg_dir) as bp:
             with pytest.raises(KeyError, match="not found in BUSCO database"):
                 bp.download("nonexistent_odb10")
 
-    def test_download_raises_on_md5_mismatch(self, monkeypatch, cfg_dir):
-        cfg_dir.mkdir(parents=True)
+    def test_download_raises_on_md5_mismatch(self, monkeypatch, mock_hashlib_gen, mock_fetch, cfg_dir):
         markerset = "bacteria_odb10"
-        tar_data = _make_tar_gz(markerset)
         with BuscoParser(cfg_dir) as bp:
-            monkeypatch.setattr("phyling.lib.download._fetch_url", lambda *a, **kw: tar_data)
-            bp._online_metadata[markerset]["md5"] = "intentionally_wrong_md5"
+            mock_hash = mock_hashlib_gen("intentionally_wrong_md5")
+            monkeypatch.setattr(download_mod, "hashlib", mock_hash)
             with pytest.raises(ValueError, match="MD5 mismatch"):
                 bp.download(markerset)
 
@@ -262,15 +249,13 @@ class TestBuscoParserDownload:
 
 
 class TestBuscoParserMetadataPersistence:
-    def test_metadata_written_on_change(self, monkeypatch, cfg_dir, mock_fetch):
-        cfg_dir.mkdir(parents=True)
+    def test_metadata_written_on_change(self, monkeypatch, mock_hashlib_gen, cfg_dir, mock_fetch):
         markerset = "bacteria_odb10"
-        tar_data = _make_tar_gz(markerset)
-        correct_md5 = hashlib.md5(tar_data).hexdigest()
+        hash = "bff9523df89980699c01e8f31e490496"
+        mock_hash = mock_hashlib_gen(hash)
+        monkeypatch.setattr(download_mod, "hashlib", mock_hash)
 
         with BuscoParser(cfg_dir) as bp:
-            monkeypatch.setattr("phyling.lib.download._fetch_url", lambda *a, **kw: tar_data)
-            bp._online_metadata[markerset]["md5"] = correct_md5
             bp.download(markerset)
 
         meta_file = cfg_dir / ".metadata"
@@ -279,39 +264,11 @@ class TestBuscoParserMetadataPersistence:
         assert markerset in content
 
     def test_metadata_not_written_when_unchanged(self, cfg_dir, mock_fetch):
-        cfg_dir.mkdir(parents=True)
         with BuscoParser(cfg_dir) as _:
             pass  # no downloads
 
         meta_file = cfg_dir / ".metadata"
         assert not meta_file.exists()
-
-    def test_metadata_written_only_for_primary_dir(self, monkeypatch, tmp_path, mock_fetch):
-        """Entries from a secondary (global) dir must not appear in primary metadata."""
-        global_dir = tmp_path / "global"
-        global_dir.mkdir()
-        local_dir = tmp_path / "local"
-        local_dir.mkdir()
-
-        # Seed global dir with a markerset
-        (global_dir / "bacteria_odb10").mkdir()
-        _write_metadata(global_dir, [["bacteria_odb10", "abc123"]])
-
-        markerset = "fungi_odb10"
-        tar_data = _make_tar_gz(markerset)
-        correct_md5 = hashlib.md5(tar_data).hexdigest()
-
-        with BuscoParser(local_dir, global_dir) as bp:
-            monkeypatch.setattr("phyling.lib.download._fetch_url", lambda *a, **kw: tar_data)
-            bp._online_metadata[markerset]["md5"] = correct_md5
-            bp.download(markerset)
-
-        meta_file = local_dir / ".metadata"
-        assert meta_file.is_file()
-        content = meta_file.read_text()
-        # Only the newly downloaded markerset should be in local metadata
-        assert "fungi_odb10" in content
-        assert "bacteria_odb10" not in content
 
 
 # ---------------------------------------------------------------------------
@@ -321,26 +278,22 @@ class TestBuscoParserMetadataPersistence:
 
 class TestBuscoParserContextManager:
     def test_enter_returns_self(self, cfg_dir, mock_fetch):
-        cfg_dir.mkdir(parents=True)
         bp = BuscoParser(cfg_dir)
         result = bp.__enter__()
         assert result is bp
         bp.close()
 
     def test_exit_returns_false(self, cfg_dir, mock_fetch):
-        cfg_dir.mkdir(parents=True)
         bp = BuscoParser(cfg_dir)
         bp.__enter__()
         assert bp.__exit__(None, None, None) is False
 
     def test_exceptions_propagate(self, cfg_dir, mock_fetch):
-        cfg_dir.mkdir(parents=True)
         with pytest.raises(RuntimeError, match="test error"):
             with BuscoParser(cfg_dir):
                 raise RuntimeError("test error")
 
     def test_close_equivalent_to_exit(self, cfg_dir, mock_fetch):
-        cfg_dir.mkdir(parents=True)
         bp = BuscoParser(cfg_dir)
         # Should not raise
         bp.close()
@@ -352,33 +305,67 @@ class TestBuscoParserContextManager:
 
 
 class TestBuscoParserMultipleDirs:
-    def test_local_dir_overrides_global(self, tmp_path, mock_fetch):
+    def test_local_dir_overrides_global(self, tmp_path, mock_fetch, cfg_dir_with_metadata):
         """Local directory metadata should take precedence over global."""
-        global_dir = tmp_path / "global"
-        global_dir.mkdir()
-        local_dir = tmp_path / "local"
-        local_dir.mkdir()
+        upstream_cfg_dir = cfg_dir_with_metadata
+        user_cfg_dir = tmp_path / "local_config"
+        shutil.copytree(upstream_cfg_dir, user_cfg_dir)
+        upstream_cfg_meta = upstream_cfg_dir / ".metadata"
+        user_cfg_meta = user_cfg_dir / ".metadata"
+        assert upstream_cfg_meta.is_file()
+        assert user_cfg_meta.is_file()
 
         # Both dirs have the same markerset but different md5s
-        (global_dir / "bacteria_odb10").mkdir()
-        _write_metadata(global_dir, [["bacteria_odb10", "global_md5"]])
+        markerset = "bacteria_odb10"
+        (upstream_cfg_dir / markerset).mkdir(exist_ok=True)
+        with open(upstream_cfg_meta, "a", encoding="utf-8") as f:
+            f.write(f"{markerset}\tglobal_md5\n")
 
-        (local_dir / "bacteria_odb10").mkdir()
-        _write_metadata(local_dir, [["bacteria_odb10", "local_md5"]])
+        (user_cfg_dir / markerset).mkdir(exist_ok=True)
+        with open(user_cfg_meta, "a", encoding="utf-8") as f:
+            f.write(f"{markerset}\tlocal_md5\n")
 
-        with BuscoParser(local_dir, global_dir) as bp:
+        with BuscoParser(user_cfg_dir, upstream_cfg_dir) as bp:
             assert bp._local_metadata["bacteria_odb10"]["md5"] == "local_md5"
-            assert bp._local_metadata["bacteria_odb10"]["path"] == local_dir
+            assert bp._local_metadata["bacteria_odb10"]["path"] == user_cfg_dir
 
-    def test_global_markerset_visible_when_not_in_local(self, tmp_path, mock_fetch):
-        global_dir = tmp_path / "global"
-        global_dir.mkdir()
-        local_dir = tmp_path / "local"
-        local_dir.mkdir()
+    def test_global_markerset_visible_when_not_in_local(self, tmp_path, mock_fetch, cfg_dir_with_metadata):
+        upstream_cfg_dir = cfg_dir_with_metadata
+        user_cfg_dir = tmp_path / "local_config"
+        shutil.copytree(upstream_cfg_dir, user_cfg_dir)
+        upstream_cfg_meta = upstream_cfg_dir / ".metadata"
+        user_cfg_meta = user_cfg_dir / ".metadata"
+        assert upstream_cfg_meta.is_file()
+        assert user_cfg_meta.is_file()
 
-        (global_dir / "bacteria_odb10").mkdir()
-        _write_metadata(global_dir, [["bacteria_odb10", "abc123"]])
+        # Add a new markerset to upstream_cfg_dir
+        markerset = "bacteria_odb10"
+        hash = "bff9523df89980699c01e8f31e490496"
+        (upstream_cfg_dir / markerset).mkdir(exist_ok=True)
+        with open(upstream_cfg_meta, "a", encoding="utf-8") as f:
+            f.write(f"{markerset}\t{hash}\n")
 
-        with BuscoParser(local_dir, global_dir) as bp:
+        with BuscoParser(user_cfg_dir, upstream_cfg_dir) as bp:
             local_names = [n.replace(" [Outdated]", "") for n in bp.local]
             assert "bacteria_odb10" in local_names
+
+    def test_metadata_written_only_for_local(self, monkeypatch, tmp_path, mock_fetch, mock_hashlib_gen, cfg_dir_with_metadata):
+        """Entries from a secondary (global) dir must not appear in primary metadata."""
+        upstream_cfg_dir = cfg_dir_with_metadata
+        user_cfg_dir = tmp_path / "local_config"
+        shutil.copytree(upstream_cfg_dir, user_cfg_dir)
+        upstream_cfg_meta = upstream_cfg_dir / ".metadata"
+        user_cfg_meta = user_cfg_dir / ".metadata"
+        assert upstream_cfg_meta.is_file()
+        assert user_cfg_meta.is_file()
+
+        markerset = "bclasvirinae_odb10"
+        hash = "51a9dce485c577e575d411d10c566820"
+        mock_hash = mock_hashlib_gen(hash)
+        monkeypatch.setattr(download_mod, "hashlib", mock_hash)
+
+        with BuscoParser(user_cfg_dir, upstream_cfg_dir) as bp:
+            bp.download(markerset)
+
+        assert hash in user_cfg_meta.read_text(encoding="utf-8")
+        assert hash not in upstream_cfg_meta.read_text(encoding="utf-8")
