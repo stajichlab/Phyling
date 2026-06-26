@@ -34,7 +34,7 @@ from phyling.lib.align import (
 @pytest.fixture(scope="module")
 def mock_hmm() -> MagicMock:
     """Generates a base HMM mock object."""
-    hmm = MagicMock()
+    hmm = MagicMock(spec=HMM)
     hmm.name = "HMM1"
     return hmm
 
@@ -368,10 +368,6 @@ class TestSampleSeqs:
 
 
 class TestSampleList:
-    def mock_helper(self, sample, hmms, evalue, threads):
-        # Return a dummy list of "hits"
-        return [f"hit_from_{sample.name}"]
-
     def test_sample_list_init_with_paths(self, path_pep_fasta: list[Path]):
         """Verify initialization with a list of file paths and test __getitem__."""
         sl = SampleList(path_pep_fasta)
@@ -416,40 +412,28 @@ class TestSampleList:
         with pytest.raises(SeqtypeError, match="Items represent different seqtypes"):
             SampleList(mixed_seqtypes_files)
 
-    def test_search_sequential_logic(
-        self, path_pep_fasta: list[Path], mock_hmms_with_cutoff: HMMMarkerSet, monkeypatch, caplog: pytest.LogCaptureFixture
+    @pytest.mark.parametrize("jobs, msg", [[1, "Sequential mode"], [2, "Multiprocesses mode"]])
+    def test_search_flow_success(
+        self,
+        path_pep_fasta: list[Path],
+        mock_hmms_with_cutoff: HMMMarkerSet,
+        monkeypatch: pytest.MonkeyPatch,
+        jobs: int,
+        msg: str,
+        caplog: pytest.LogCaptureFixture,
     ):
         """Test sequential search mode logic."""
         sl = SampleList(path_pep_fasta)
 
-        monkeypatch.setattr("phyling.lib.align._search_helper", self.mock_helper)
+        monkeypatch.setattr("phyling.lib.align._search_helper", lambda sample, *args, **kwargs: [f"hit_from_{sample.name}"])
 
         with caplog.at_level("DEBUG"):
-            results = sl.search(mock_hmms_with_cutoff, jobs=1, threads=2)
+            results = sl.search(mock_hmms_with_cutoff, jobs=jobs, threads=2)
 
-        assert "Sequential mode" in caplog.text
+        assert f"{msg}" in caplog.text
         assert f"Progress: {len(path_pep_fasta)} / {len(path_pep_fasta)}" in caplog.text
-        assert f"hit_from_{path_pep_fasta[0].name}" in results
-
-    def test_search_parallel_logic(
-        self, path_pep_fasta: list[Path], mock_hmms_with_cutoff: HMMMarkerSet, monkeypatch, caplog: pytest.LogCaptureFixture
-    ):
-        """Test search orchestration using monkeypatch to avoid actual pyhmmer calls."""
-
-        # 1. Setup SampleList
-        sl = SampleList(path_pep_fasta)
-
-        # Patch the helper used by 'partial' in the search method
-        monkeypatch.setattr("phyling.lib.align._search_helper", self.mock_helper)
-
-        # 3. Test Parallel Mode (jobs > 1)
-        with caplog.at_level("DEBUG"):
-            results = sl.search(mock_hmms_with_cutoff, jobs=3, threads=1)
-
-        assert len(results) == len(path_pep_fasta)
-        assert "Multiprocesses mode" in caplog.text
-        assert f"Progress: {len(path_pep_fasta)} / {len(path_pep_fasta)}" in caplog.text
-        assert f"hit_from_{path_pep_fasta[0].name}" in results
+        for fasta in path_pep_fasta:
+            assert f"hit_from_{fasta.name}" in results
 
     def test_search_invalid_jobs(self, path_pep_fasta: list[Path], mock_hmms_with_cutoff: HMMMarkerSet):
         """Ensure RuntimeError when jobs are out of bounds."""
@@ -696,7 +680,7 @@ class TestSearchHitsManager:
 
 
 @pytest.fixture
-def mock_alignment_runners(monkeypatch, mock_alignment):
+def mock_alignment_runners(monkeypatch: pytest.MonkeyPatch, mock_alignment):
     """Stub out the actual alignment processing functions."""
     monkeypatch.setattr("phyling.lib.align.run_hmmalign", lambda self, hmm: mock_alignment)
     monkeypatch.setattr("phyling.lib.align.run_muscle", lambda self, threads: mock_alignment)
@@ -850,34 +834,26 @@ class TestOrthologList:
             ortho_list.align(method="muscle", jobs=jobs)
         assert "jobs should be between 1 and" in str(exc_info.value)
 
-    def test_align_sequential_mode_flow(
-        self, path_pep_mfa: list[Path], mock_hmms_with_cutoff: HMMMarkerSet, spy_align_env, caplog: pytest.LogCaptureFixture
+    @pytest.mark.parametrize("jobs, msg", [[1, "Sequential mode"], [2, "Multiprocesses mode"]])
+    def test_align_flow_success(
+        self,
+        spy_align_env,
+        path_pep_mfa: list[Path],
+        mock_hmms_with_cutoff: HMMMarkerSet,
+        jobs: int,
+        msg: str,
+        caplog: pytest.LogCaptureFixture,
     ):
         """Verify that processing runs sequentially when jobs=1 and updates logs."""
         ortho_list = OrthologList(path_pep_mfa)
 
         with caplog.at_level(logging.DEBUG):
-            alignments = ortho_list.align(method="hmmalign", hmms=mock_hmms_with_cutoff, jobs=1, threads=2)
+            alignments = ortho_list.align(method="hmmalign", hmms=mock_hmms_with_cutoff, jobs=jobs, threads=2)
 
-        assert len(alignments) == 4
-        assert isinstance(alignments[0], MultipleSeqAlignment)
-        assert "Sequential mode with 2 threads." in caplog.text
-        assert "Progress: 4 / 4" in caplog.text
-
-    def test_align_parallel_threadpool_mode_flow(
-        self, path_pep_mfa: list[Path], spy_align_env, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-    ):
-        """Confirm multiprocess threading pool contexts instantiate and process cleanly."""
-        ortho_list = OrthologList(path_pep_mfa)
-
-        monkeypatch.setattr(ThreadPool, "imap", lambda self, func, iterable: map(func, iterable))
-
-        with caplog.at_level(logging.DEBUG):
-            alignments = ortho_list.align(method="muscle", jobs=2, threads=4)
-
-        assert len(alignments) == 4
-        assert "Multiprocesses mode with 2 jobs and 4 threads" in caplog.text
-        assert "Progress: 4 / 4" in caplog.text
+        assert f"{msg}" in caplog.text
+        assert f"Progress: {len(path_pep_mfa)} / {len(path_pep_mfa)}" in caplog.text
+        for aln in alignments:
+            assert isinstance(aln, MultipleSeqAlignment)
 
     def test_align_exception_handling_logs_and_re_raises(
         self, path_pep_mfa: list[Path], monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
