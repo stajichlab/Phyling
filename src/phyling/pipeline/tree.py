@@ -78,14 +78,16 @@ def tree(
             model = "AUTO"
 
         tree = concat_tree.build(
-            method, output / method, model, bs=bs, scfl=scfl, seed=seed, threads=threads, threads_max=threads_max
+            method, output / method, model=model, bs=bs, scfl=scfl, seed=seed, threads=threads, threads_max=threads_max
         )
 
     else:
         logger.info("Inference with consensus mode...")
         if bs > 0 or scfl > 0:
             logger.warning("Bootstrap and concordance factor calculation are disabled with consensus mode.")
-        mfa2treelist.build(method, "LG" if mfa2treelist.seqtype == SeqTypes.PEP else "GTR", bs=0, scfl=0, jobs=threads, threads=1)
+        mfa2treelist.build(
+            method, model="LG" if mfa2treelist.seqtype == SeqTypes.PEP else "GTR", bs=0, scfl=0, jobs=threads, threads=1
+        )
         logger.info("Tree building done.")
         tree = mfa2treelist.get_consensus_tree(output / "astral", seed=seed)
 

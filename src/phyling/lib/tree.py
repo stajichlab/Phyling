@@ -263,9 +263,8 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
     def build(
         self,
         method: Literal["ft", "raxml", "iqtree"],
-        output: None,
-        model: str | Path = "AUTO",
         *,
+        model: str | Path = "AUTO",
         noml: bool = False,
         bs: int = 0,
         scfl: int = 0,
@@ -278,8 +277,8 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
         self,
         method: Literal["ft", "raxml", "iqtree"],
         output: str | Path,
-        model: str | Path = "AUTO",
         *,
+        model: str | Path = "AUTO",
         noml: bool = False,
         bs: int = 0,
         scfl: int = 0,
@@ -292,8 +291,8 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
         self,
         method: Literal["ft", "raxml", "iqtree"],
         output: str | Path | None = None,
-        model: str | Path = "AUTO",
         *,
+        model: str | Path = "AUTO",
         noml: bool = False,
         bs: int = 0,
         scfl: int = 0,
@@ -412,7 +411,7 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
                     self,
                     tree_file,
                     output / "ufboot",
-                    runner.model,
+                    model=runner.model,
                     bs=bs,
                     seed=seed,
                     threads=threads,
@@ -583,8 +582,8 @@ class MFA2TreeList(_abc.SeqDataListABC[MFA2Tree]):
     def build(
         self,
         method: Literal["ft", "raxml", "iqtree"],
-        model: str | Path = "AUTO",
         *,
+        model: str | Path = "AUTO",
         noml: bool = False,
         bs: int = 0,
         scfl: int = 0,
@@ -810,9 +809,8 @@ class MFA2TreeList(_abc.SeqDataListABC[MFA2Tree]):
 def bootstrap(
     mfa2tree: MFA2Tree,
     tree: str | Path,
-    output: None,
-    model: str | Path = "AUTO",
     *,
+    model: str | Path = "AUTO",
     bs: int = 0,
     seed: int = -1,
     threads: int = -1,
@@ -823,8 +821,8 @@ def bootstrap(
     mfa2tree: MFA2Tree,
     tree: str | Path,
     output: str | Path,
-    model: str | Path = "AUTO",
     *,
+    model: str | Path = "AUTO",
     bs: int = 0,
     seed: int = -1,
     threads: int = -1,
@@ -834,8 +832,8 @@ def bootstrap(
     mfa2tree: MFA2Tree,
     tree: str | Path,
     output: str | Path | None = None,
-    model: str | Path = "AUTO",
     *,
+    model: str | Path = "AUTO",
     bs: int = 0,
     seed: int = -1,
     threads: int = -1,
@@ -1042,6 +1040,9 @@ def _build_helper(
     original_level = mfa2tree_logger.level
     mfa2tree_logger.setLevel(logging.WARNING)
     try:
-        instance.build(method, output, model, noml=noml, bs=bs, scfl=scfl, seed=seed, threads_max=threads)
+        if output:
+            instance.build(method, output, model=model, noml=noml, bs=bs, scfl=scfl, seed=seed, threads_max=threads)
+        else:
+            instance.build(method, model=model, noml=noml, bs=bs, scfl=scfl, seed=seed, threads_max=threads)
     finally:
         mfa2tree_logger.setLevel(original_level)

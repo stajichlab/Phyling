@@ -47,7 +47,9 @@ def filter(
             "Use %s to generate trees and filter by the rank of their toverr.",
             TreeMethods.FT.method,
         )
-        remained_mfa2treelist.build("ft", "LG" if mfa2treelist.seqtype == SeqTypes.PEP else "JC", noml=not (ml), threads=threads)
+        remained_mfa2treelist.build(
+            "ft", model="LG" if mfa2treelist.seqtype == SeqTypes.PEP else "JC", noml=not (ml), threads=threads
+        )
         remained_mfa2treelist.compute_toverr(threads=threads)
         completed_mfa2treelist.extend(remained_mfa2treelist)
     completed_mfa2treelist.sort()
