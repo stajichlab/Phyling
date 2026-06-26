@@ -1211,9 +1211,11 @@ def bp_mrtrans(pep_msa: MultipleSeqAlignment, cds_recs: list[SeqRecord]) -> Mult
         dna_idx = 0
         dna_align: list[str] = []
         info = {
-            "id": cds_rec.id if hasattr(cds_rec, "id") else pep_rec.id,
-            "name": cds_rec.name if hasattr(cds_rec, "name") else pep_rec.name,
-            "description": cds_rec.description if hasattr(cds_rec, "description") else pep_rec.description,
+            "id": cds_rec.id if hasattr(cds_rec, "id") and cds_rec.id != "<unknown id>" else pep_rec.id,
+            "name": cds_rec.name if hasattr(cds_rec, "name") and cds_rec.name != "<unknown name>" else pep_rec.name,
+            "description": cds_rec.description
+            if hasattr(cds_rec, "description") and cds_rec.description != "<unknown description>"
+            else pep_rec.description,
         }
         cds_seq: str = str(cds_rec.seq).upper()
         for align_idx in range(len(pep_rec)):

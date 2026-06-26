@@ -1,62 +1,69 @@
 from __future__ import annotations
 
-import shutil
-import tarfile
 from pathlib import Path
 
 import pytest
 
-import phyling
-
-
-class PackMetadata:
-    def __init__(self, persistent_tmp_path: Path) -> None:
-        self.cfg_dir = phyling.CFG_DIRS[0]
-        self.temp_tar = persistent_tmp_path / "temp.tgz"
-
-    def pack_metadata(self):
-        with tarfile.open(self.temp_tar, "w") as tar:
-            if self.cfg_dir.exists() and self.cfg_dir.is_dir():
-                tar.add(self.cfg_dir, arcname=self.cfg_dir.name)
-
-    def unpack_metadata(self):
-        shutil.rmtree(self.cfg_dir)
-        with tarfile.open(self.temp_tar, "r") as tar:
-            tar.extractall(self.cfg_dir.parent, filter="fully_trusted")
-        self.temp_tar.unlink()
+TEST_DATA_DIR = Path("tests/data")
+TEST_DB_DIR = Path("tests/database")
+MARKERSET_DIR = TEST_DB_DIR / "poxviridae_odb10"
 
 
 @pytest.fixture(scope="session")
-def persistent_tmp_path(tmp_path_factory: pytest.TempPathFactory):
-    return tmp_path_factory.mktemp("persistent_tmpdir")
+def path_markerset() -> Path:
+    return MARKERSET_DIR
 
 
-@pytest.fixture(scope="session", autouse=True)
-def hide_metadata(persistent_tmp_path: Path):
-    obj = PackMetadata(persistent_tmp_path)
-    obj.pack_metadata()
-    yield
-    obj.unpack_metadata()
+@pytest.fixture(scope="session")
+def path_hmm_dir() -> Path:
+    return MARKERSET_DIR / "hmms"
 
 
-@pytest.fixture(scope="class")
-def class_shared_tmpdir(tmp_path_factory: pytest.TempPathFactory):
-    return tmp_path_factory.mktemp("shared_tmpdir")
+@pytest.fixture(scope="session")
+def path_cutoff_file() -> Path:
+    return MARKERSET_DIR / "scores_cutoff"
 
 
-def pytest_addoption(parser):
-    parser.addoption("--runslow", action="store_true", default=False, help="run slow tests")
+@pytest.fixture(scope="session")
+def path_data_dir() -> Path:
+    return TEST_DATA_DIR
 
 
-def pytest_configure(config):
-    config.addinivalue_line("markers", "slow: mark test as slow to run")
+@pytest.fixture(scope="session")
+def path_pep_fasta_dir() -> Path:
+    return TEST_DATA_DIR / "pep" / "bgzf"
 
 
-def pytest_collection_modifyitems(config, items):
-    if config.getoption("--runslow"):
-        # --runslow given in cli: do not skip slow tests
-        return
-    skip_slow = pytest.mark.skip(reason="need --runslow option to run")
-    for item in items:
-        if "slow" in item.keywords:
-            item.add_marker(skip_slow)
+@pytest.fixture(scope="session")
+def path_cds_fasta_dir() -> Path:
+    return TEST_DATA_DIR / "cds" / "bgzf"
+
+
+@pytest.fixture(scope="session")
+def path_pep_fasta(path_pep_fasta_dir) -> list[Path]:
+    return sorted(tuple(path_pep_fasta_dir.iterdir()))
+
+
+@pytest.fixture(scope="session")
+def path_cds_fasta(path_cds_fasta_dir) -> list[Path]:
+    return sorted(tuple(path_cds_fasta_dir.iterdir()))
+
+
+@pytest.fixture(scope="session")
+def path_pep_mfa() -> list[Path]:
+    return sorted(tuple((TEST_DATA_DIR / "mfa").glob("*.faa")))
+
+
+@pytest.fixture(scope="session")
+def path_cds_mfa() -> list[Path]:
+    return sorted(tuple((TEST_DATA_DIR / "mfa").glob("*.fna")))
+
+
+@pytest.fixture(scope="session")
+def path_pep_msa() -> list[Path]:
+    return sorted(tuple((TEST_DATA_DIR / "msa").glob("*.faa")))
+
+
+@pytest.fixture(scope="session")
+def path_cds_msa() -> list[Path]:
+    return sorted(tuple((TEST_DATA_DIR / "msa").glob("*.fna")))
