@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,15 @@ import pytest
 TEST_DATA_DIR = Path("tests/data")
 TEST_DB_DIR = Path("tests/database")
 MARKERSET_DIR = TEST_DB_DIR / "poxviridae_odb10"
+
+
+def pytest_configure(config):
+    # Calculate the project directory relative to the location of conftest.py
+    project_root = Path(__file__).parent.parent
+    database_path = project_root / "tests" / "database"
+
+    # Inject it directly into the process environment
+    os.environ["PHYLING_DB"] = str(database_path.resolve())
 
 
 @pytest.fixture(scope="session")
@@ -67,3 +77,8 @@ def path_pep_msa() -> list[Path]:
 @pytest.fixture(scope="session")
 def path_cds_msa() -> list[Path]:
     return sorted(tuple((TEST_DATA_DIR / "msa").glob("*.fna")))
+
+
+@pytest.fixture(scope="session")
+def path_tree_file() -> Path:
+    return TEST_DATA_DIR / "tree.nw"

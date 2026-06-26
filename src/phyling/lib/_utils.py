@@ -6,8 +6,10 @@ These are not part of the public API and may change without notice.
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
+import sys
 import time
 from functools import wraps
 from pathlib import Path
@@ -432,6 +434,13 @@ def check_binary(prog: str, bins: tuple, conda_url: str | None = None, source_ur
         bin_path = shutil.which(bin)
         if bin_path:
             return bin_path
+
+    # Fallback
+    bindir = Path(sys.executable).parent
+    for bin in bins:
+        fallback_path = bindir / bin
+        if fallback_path.exists() and os.access(fallback_path, os.X_OK):
+            return str(fallback_path)
 
     install_msg = ""
     conda_msg = ""
