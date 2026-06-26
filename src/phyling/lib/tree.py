@@ -1032,9 +1032,6 @@ def _build_helper(
         scfl (int): Site concordance factor threshold for IQ-TREE. Must be at least 1000 if set. Defaults to 0 (disabled).
         seed (int): Seed number for reproducibility. Defaults to -1 (random seed).
         threads (int): Maximum number of threads to use. Only applicable to RAxML-NG and IQ-TREE. Defaults to 1.
-
-    Returns:
-        Tree: The resulting phylogenetic tree.
     """
     mfa2tree_logger = logging.getLogger("phyling.lib.tree.MFA2Tree")
     original_level = mfa2tree_logger.level
