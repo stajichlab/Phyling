@@ -110,8 +110,7 @@ jobs:
           pytest -vv \
             --cov=${{ env.PKG_NAME }} \
             --cov-report=xml \
-            --cov-config=pyproject.toml \
-            --runslow
+            --cov-config=pyproject.toml
 
       - name: Upload coverage.xml artifact
         uses: actions/upload-artifact@v7

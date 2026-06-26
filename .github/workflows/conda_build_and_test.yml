@@ -37,5 +37,5 @@ jobs:
         shell: micromamba-shell {0}
 
       - name: Pytest
-        run: pytest --runslow -vv
+        run: pytest -vv
         shell: micromamba-shell {0}
