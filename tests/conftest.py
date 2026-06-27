@@ -2,21 +2,21 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
+from pyhmmer.plan7 import HMM
 
 TEST_DATA_DIR = Path("tests/data")
 TEST_DB_DIR = Path("tests/database")
 MARKERSET_DIR = TEST_DB_DIR / "poxviridae_odb10"
 
 
-def pytest_configure(config):
-    # Calculate the project directory relative to the location of conftest.py
-    project_root = Path(__file__).parent.parent
-    database_path = project_root / "tests" / "database"
-
-    # Inject it directly into the process environment
-    os.environ["PHYLING_DB"] = str(database_path.resolve())
+project_root = Path(__file__).parent.parent
+database_path = project_root / TEST_DB_DIR
+# Inject it directly into the process environment
+# THIS MUST BE DONE BEFORE ANY PHYLING IMPORT!!!
+os.environ["PHYLING_DB"] = str(database_path.resolve())
 
 
 @pytest.fixture(scope="session")
@@ -92,3 +92,47 @@ def path_cds_msa() -> list[Path]:
 @pytest.fixture(scope="session")
 def path_tree_file() -> Path:
     return TEST_DATA_DIR / "tree.nw"
+
+
+# ---------------------------------------------------------------------------
+# Mock fixtures
+# ---------------------------------------------------------------------------
+from phyling.lib.align import HMMMarkerSet
+
+
+@pytest.fixture(scope="module")
+def mock_hmm() -> MagicMock:
+    """Generates a base HMM mock object."""
+    hmm = MagicMock(spec=HMM)
+    hmm.name = "HMM1"
+    return hmm
+
+
+@pytest.fixture(scope="module")
+def mock_hmms_no_cutoff(mock_hmm) -> MagicMock:
+    """HMMMarkerSet container mock holding mock_hmm with have_cutoffs = False."""
+    hmms = MagicMock(spec=HMMMarkerSet)
+    hmms.have_cutoffs.return_value = False
+    hmms.checksums = {"HMM1": "abc123"}
+
+    container_data = [mock_hmm]
+    hmms.__iter__.return_value = iter(container_data)
+    hmms.__getitem__.side_effect = lambda index: container_data[index]
+    hmms.__len__.return_value = len(container_data)
+
+    return hmms
+
+
+@pytest.fixture(scope="module")
+def mock_hmms_with_cutoff(mock_hmm) -> MagicMock:
+    """HMMMarkerSet container mock holding mock_hmm with have_cutoffs = True."""
+    hmms = MagicMock(spec=HMMMarkerSet)
+    hmms.have_cutoffs.return_value = True
+    hmms.checksums = {"HMM1": "abc123"}
+
+    container_data = [mock_hmm]
+    hmms.__iter__.return_value = iter(container_data)
+    hmms.__getitem__.side_effect = lambda index: container_data[index]
+    hmms.__len__.return_value = len(container_data)
+
+    return hmms

@@ -32,44 +32,8 @@ from phyling.lib.align import (
 
 
 @pytest.fixture(scope="module")
-def mock_hmm() -> MagicMock:
-    """Generates a base HMM mock object."""
-    hmm = MagicMock(spec=HMM)
-    hmm.name = "HMM1"
-    return hmm
-
-
-@pytest.fixture(scope="module")
-def mock_hmms_no_cutoff(mock_hmm) -> MagicMock:
-    """HMMMarkerSet container mock holding mock_hmm with have_cutoffs = False."""
-    hmms = MagicMock(spec=HMMMarkerSet)
-    hmms.have_cutoffs.return_value = False
-
-    container_data = [mock_hmm]
-    hmms.__iter__.return_value = iter(container_data)
-    hmms.__getitem__.side_effect = lambda index: container_data[index]
-    hmms.__len__.return_value = len(container_data)
-
-    return hmms
-
-
-@pytest.fixture(scope="module")
 def real_hmms(path_hmm_dir) -> HMMMarkerSet:
     return HMMMarkerSet(path_hmm_dir)
-
-
-@pytest.fixture(scope="module")
-def mock_hmms_with_cutoff(mock_hmm) -> MagicMock:
-    """HMMMarkerSet container mock holding mock_hmm with have_cutoffs = True."""
-    hmms = MagicMock(spec=HMMMarkerSet)
-    hmms.have_cutoffs.return_value = True
-
-    container_data = [mock_hmm]
-    hmms.__iter__.return_value = iter(container_data)
-    hmms.__getitem__.side_effect = lambda index: container_data[index]
-    hmms.__len__.return_value = len(container_data)
-
-    return hmms
 
 
 @pytest.fixture
