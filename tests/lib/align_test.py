@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import pickle
-from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -58,11 +57,6 @@ def mock_sampleseqs_a(mock_sampleseq_factory):
 @pytest.fixture
 def mock_sampleseqs_b(mock_sampleseq_factory):
     return mock_sampleseq_factory("Sample_B")
-
-
-@pytest.fixture
-def mock_sampleseqs_c(mock_sampleseq_factory):
-    return mock_sampleseq_factory("Sample_C")
 
 
 @pytest.fixture
@@ -523,10 +517,9 @@ class TestSearchHitsManager:
         rev_samp = {v: k for k, v in manager._samples.items()}
         assert all(rev_samp[s_idx] is mock_sampleseqs_a for s_idx in filtered._sample_arr)
 
-    def test_filter_min_taxa_logic(
-        self, mock_sampleseqs_a: SampleSeqs, mock_sampleseqs_b: SampleSeqs, mock_sampleseqs_c: SampleSeqs
-    ):
+    def test_filter_min_taxa_logic(self, mock_sampleseqs_a: SampleSeqs, mock_sampleseqs_b: SampleSeqs, mock_sampleseq_factory):
         """Confirm the ortholog-aware taxa counter targets and purges markers below threshold limits."""
+        mock_sampleseqs_c = mock_sampleseq_factory("Sample_C")
         hits = [
             # HMM_1 satisfies min_taxa=2 (found across 2 different samples)
             SearchHit(hmm="HMM_1", sample=mock_sampleseqs_a, seqid="s1"),

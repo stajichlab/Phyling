@@ -9,10 +9,6 @@ import pytest
 import phyling.pipeline.download as download_mod
 from phyling.pipeline.download import _wrapper, download
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
 
 @pytest.fixture
 def mock_busco_parser(monkeypatch):
