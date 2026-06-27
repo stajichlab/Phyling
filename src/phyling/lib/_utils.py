@@ -13,7 +13,7 @@ import sys
 import time
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, Literal, TypeVar, overload
+from typing import Any, Callable, Literal, TypeVar, cast, overload
 from zlib import crc32
 
 try:
@@ -137,7 +137,7 @@ def remove_dirs(*dirs: Path) -> None:
             shutil.rmtree(dir)
 
 
-def check_threads(func: Callable[..., _R]) -> Callable[..., _R]:
+def check_threads(func: Callable[_P, _R]) -> Callable[_P, _R]:
     """Decorator to validate and adjust the 'threads' parameter passed to a function.
 
     Ensures the 'threads' parameter is a positive integer and does not exceed the number of available CPU cores. If 'threads'
@@ -155,23 +155,25 @@ def check_threads(func: Callable[..., _R]) -> Callable[..., _R]:
     """
 
     @wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> _R:
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
         """Validate and adjust the 'threads' parameter before passing to a function."""
-        args_list = list(args)
         if "threads" in kwargs:
-            threads_val = kwargs["threads"]
-            kwargs["threads"] = _check(threads_val)
-        else:
-            import inspect
+            kwargs["threads"] = _check(kwargs["threads"])
+            return func(*args, **kwargs)
 
-            sig = inspect.signature(func)
-            params = list(sig.parameters.keys())
-            if "threads" in params:
-                threads_index = params.index("threads")
-                if len(args_list) > threads_index:
-                    args_list[threads_index] = _check(args_list[threads_index])
+        import inspect
 
-        return func(*args_list, **kwargs)
+        sig = inspect.signature(func)
+        params = list(sig.parameters.keys())
+
+        if "threads" in params:
+            threads_index = params.index("threads")
+            if len(args) > threads_index:
+                args_list = list(args)
+                args_list[threads_index] = _check(args_list[threads_index])
+                return cast(Any, func)(*args_list, **kwargs)
+
+        return func(*args, **kwargs)
 
     def _check(threads: object) -> int:
         if not isinstance(threads, int):
