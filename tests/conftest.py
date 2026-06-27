@@ -20,6 +20,16 @@ def pytest_configure(config):
 
 
 @pytest.fixture(scope="session")
+def fake_online_metadata() -> Path:
+    return TEST_DB_DIR / "fake_online_metadata"
+
+
+@pytest.fixture(scope="session")
+def fake_local_metadata() -> Path:
+    return TEST_DB_DIR / ".metadata"
+
+
+@pytest.fixture(scope="session")
 def path_markerset() -> Path:
     return MARKERSET_DIR
 
