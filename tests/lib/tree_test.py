@@ -371,18 +371,18 @@ class TestMFA2TreeList:
 
     def test_init_pep(self, path_pep_msa: list[Path]):
         obj = MFA2TreeList(path_pep_msa)
-        assert len(obj) == 2
+        assert len(obj) == len(path_pep_msa)
         assert obj.seqtype == "pep"
 
     def test_init_cds(self, path_cds_msa: list[Path]):
         obj = MFA2TreeList(path_cds_msa)
-        assert len(obj) == 2
+        assert len(obj) == len(path_cds_msa)
         assert obj.seqtype == "dna"
 
     def test_init_with_names(self, path_pep_msa: list[Path]):
-        names = ["name1", "name2"]
+        names = [f"name{idx}" for idx in range(len(path_pep_msa))]
         obj = MFA2TreeList(path_pep_msa, names, seqtype="pep")
-        assert len(obj) == 2
+        assert len(obj) == len(path_pep_msa)
         for mfa2tree in obj:
             assert mfa2tree.name in names
 
@@ -396,9 +396,9 @@ class TestMFA2TreeList:
         assert len(subset) == 1
 
     def test_getitem_by_name(self, path_pep_msa: list[Path]):
-        names = ["name1", "name2"]
+        names = [f"name{idx}" for idx in range(len(path_pep_msa))]
         obj = MFA2TreeList(path_pep_msa, names, seqtype="pep")
-        item = obj["name1"]
+        item = obj["name0"]
         assert isinstance(item, MFA2Tree)
         assert item.file == path_pep_msa[0].absolute()
 
@@ -535,7 +535,7 @@ class TestMFA2TreeListConcat:
         assert len(result) == 2
         assert result[0].name == "concat_alignments.mfa"
         assert result[1].name == "concat_alignments.partition"
-        assert len(re.findall(r"(^|\n)>", Path(result[0]).read_text())) == 5
+        assert len(re.findall(r"^>", Path(result[0]).read_text(), flags=re.M)) == 5
 
 
 class TestBootstrap:

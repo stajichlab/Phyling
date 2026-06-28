@@ -81,12 +81,12 @@ def path_cds_mfa() -> list[Path]:
 
 @pytest.fixture(scope="session")
 def path_pep_msa() -> list[Path]:
-    return sorted(tuple((TEST_DATA_DIR / "msa").glob("*.faa")))
+    return sorted(tuple((TEST_DATA_DIR / "msa").glob("*.aa.mfa")))
 
 
 @pytest.fixture(scope="session")
 def path_cds_msa() -> list[Path]:
-    return sorted(tuple((TEST_DATA_DIR / "msa").glob("*.fna")))
+    return sorted(tuple((TEST_DATA_DIR / "msa").glob("*.cds.mfa")))
 
 
 @pytest.fixture(scope="session")
