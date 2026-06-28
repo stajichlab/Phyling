@@ -62,8 +62,9 @@ def main(args: Args) -> int:
         if file_handler:
             logger.removeHandler(file_handler)
             file_handler.close()
-            if Path(args.output).is_dir():
-                Path(file_handler.baseFilename).rename(args.output / "log.txt")
+            source_log = Path(file_handler.baseFilename)
+            if source_log.exists() and Path(args.output).is_dir():
+                source_log.rename(args.output / "log.txt")
 
     return 0
 
