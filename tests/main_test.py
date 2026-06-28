@@ -15,7 +15,7 @@ class TestModuleInit:
     def test_cfg_dirs_with_env(self):
         assert phyling.CFG_DIRS[0].resolve().absolute() == Path("tests/database").resolve().absolute()
 
-    def test_cfg_dirs_wo_env(self, monkeypatch):
+    def test_cfg_dirs_wo_env(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("PHYLING_DB", "")
         importlib.reload(phyling)
         assert phyling.CFG_DIRS[0] == Path.home() / ".phyling"

@@ -11,7 +11,7 @@ from phyling.pipeline.download import _wrapper, download
 
 
 @pytest.fixture
-def mock_busco_parser(monkeypatch):
+def mock_busco_parser(monkeypatch: pytest.MonkeyPatch):
     mock_metadata = MagicMock()
     mock_metadata.online = ["fungi_odb10", "bacteria_odb10", "poxviridae_odb10"]
     mock_metadata.local = []
@@ -28,7 +28,7 @@ def mock_busco_parser(monkeypatch):
 
 
 class TestDownload:
-    def test_list_option_empty_local(self, mock_busco_parser, monkeypatch):
+    def test_list_option_empty_local(self, mock_busco_parser, monkeypatch: pytest.MonkeyPatch):
         mock_wrap = MagicMock()
         monkeypatch.setattr(download_mod, "_wrapper", mock_wrap)
 
@@ -37,7 +37,7 @@ class TestDownload:
         assert mock_wrap.call_count == 1
         mock_busco_parser.download.assert_not_called()
 
-    def test_list_option_has_local(self, mock_busco_parser, monkeypatch):
+    def test_list_option_has_local(self, mock_busco_parser, monkeypatch: pytest.MonkeyPatch):
         mock_busco_parser.local = ["fungi_odb10"]
 
         mock_wrap = MagicMock()
@@ -77,27 +77,27 @@ class TestDownload:
 
 
 class TestWrapper:
-    def test_prints_message(self, capsys):
+    def test_prints_message(self, capsys: pytest.CaptureFixture):
         _wrapper(["item1", "item2", "item3"], col=2, col_width=15, msg="Test header:")
         captured = capsys.readouterr()
         assert "Test header:" in captured.out
 
-    def test_no_message(self, capsys):
+    def test_no_message(self, capsys: pytest.CaptureFixture):
         _wrapper(["item1", "item2"], col=2, col_width=15, msg=None)
         captured = capsys.readouterr()
         assert "item1" in captured.out
 
-    def test_single_item(self, capsys):
+    def test_single_item(self, capsys: pytest.CaptureFixture):
         _wrapper(["only_item"], col=3, col_width=20, msg="Single:")
         captured = capsys.readouterr()
         assert "only_item" in captured.out
 
-    def test_empty_list(self, capsys):
+    def test_empty_list(self, capsys: pytest.CaptureFixture):
         _wrapper([], col=3, col_width=20, msg="Empty:")
         captured = capsys.readouterr()
         assert "Empty:" in captured.out
 
-    def test_items_are_printed(self, capsys):
+    def test_items_are_printed(self, capsys: pytest.CaptureFixture):
         items = ["fungi_odb10", "bacteria_odb10", "archaea_odb10"]
         _wrapper(items, col=2, col_width=20)
         captured = capsys.readouterr()
