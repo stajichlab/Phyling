@@ -21,7 +21,7 @@ jobs:
         with:
           fetch-tags: true
 
-      - uses: mamba-org/setup-micromamba@v2
+      - uses: mamba-org/setup-micromamba@v3
         with:
           environment-file: dev_environment.yml
           create-args: >-
