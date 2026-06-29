@@ -45,7 +45,7 @@ jobs:
           fetch-tags: true
 
       - name: Cache Python packages
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: pip-${{ runner.os }}-${{ matrix.python }}-${{ hashFiles('pyproject.toml') }}
@@ -66,31 +66,31 @@ jobs:
           pip install ".[dev]"
 
       - name: Cache muscle
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: ~/.local/bin/muscle
           key: ${{ runner.os }}-muscle
 
       - name: Cache ASTER
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: ~/.local/bin/astral
           key: ${{ runner.os }}-ASTER
 
       - name: Cache FastTree
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: ~/.local/bin/FastTree
           key: ${{ runner.os }}-FastTree
 
       - name: Cache RAxML
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: ~/.local/bin/raxml-ng
           key: ${{ runner.os }}-raxml-ng
 
       - name: Cache IQTree
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: ~/.local/bin/iqtree2
           key: ${{ runner.os }}-IQTree

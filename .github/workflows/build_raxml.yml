@@ -10,7 +10,7 @@ jobs:
     steps:
       - name: Cache raxml-ng
         id: cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.local/bin/raxml-ng
           key: ${{ runner.os }}-raxml-ng
