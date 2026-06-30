@@ -28,7 +28,7 @@ classifiers = [
 ]
 dependencies = [
   "biopython>=1.81",
-  "clipkit>=2.1.1",
+  "clipkit>=2.7.0",
   "matplotlib>=3.5.3",
   "numpy>=2.0.2,<3.0.0",
   "phykit>=2.0.1",
