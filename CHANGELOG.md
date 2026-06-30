@@ -7,6 +7,27 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Refactored `phyling.libphyling` to `phyling.lib` for improved structural clarity.
+
+- Updated the primary entry point from `phyling.__main__` to `phyling.main`, utilizing `run_cli` instead of the previous `main`
+  function.
+
+- Promoted the internal function `phyling.lib.tree._fill_missing_taxon` to be publicly accessible.
+
+- Overhauled the logger setup to enhance overall readability.
+
+- Optimized the `SearchHitsManager` component.
+
+### Fixed
+
+- Introduced a timeout mechanism for `phyling.lib.download._fetch_url` to prevent indefinite connection hangs.
+
+- Corrected `phyling.lib.tree.MFA2Tree.build` to return the appropriate tree file when 'bs' or 'scfl' is enabled.
+
+- Refined the fallback logic within `phyling.lib.align.bp_mrtrans` for better stability and coverage.
+
 ## [2.3.1] - 2025-09-10
 
 ### Fixed

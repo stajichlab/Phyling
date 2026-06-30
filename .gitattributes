@@ -5,4 +5,5 @@
 .gitattributes export-ignore
 .gitignore export-ignore
 .pre-commit-config.yaml export-ignore
-dev_additional_pacakges.yml export-ignore
+codecov.yml
+dev_environment.yml export-ignore
