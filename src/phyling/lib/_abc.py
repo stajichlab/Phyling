@@ -40,7 +40,7 @@ class SupportsSeqType(Protocol):
     """Structural type for any object with a seqtype attribute."""
 
     @property
-    def seqtype(self) -> Literal["dna", "rna", "pep", "NaN"]: ...
+    def seqtype(self) -> Literal["dna", "pep", "NaN"]: ...
 
 
 _SupportsSeqType = TypeVar("_SupportsSeqType", bound=SupportsSeqType)
@@ -153,7 +153,7 @@ def check_seqtype(instance: _SupportsSeqType, other: _SupportsSeqType) -> None:
         raise SeqtypeError("Items represent different seqtypes.")
 
 
-def _add_seqtypes(x: _SupportsSeqType, y: _SupportsSeqType) -> Literal["dna", "rna", "pep", "NaN"]:
+def _add_seqtypes(x: _SupportsSeqType, y: _SupportsSeqType) -> Literal["dna", "pep", "NaN"]:
     """Determine the seqtype for the combined items x and y.
 
     Args:
@@ -496,7 +496,7 @@ class SeqFileWrapperABC(FileWrapperABC):
         return super().__eq__(other)
 
     @property
-    def seqtype(self) -> Literal["dna", "pep", "rna", "NaN"]:
+    def seqtype(self) -> Literal["dna", "pep"]:
         """Get the sequence type of the file.
 
         Returns:
@@ -505,7 +505,7 @@ class SeqFileWrapperABC(FileWrapperABC):
         return self._seqtype
 
     @abstractmethod
-    def _guess_seqtype(self) -> Literal["dna", "pep", "rna", "NaN"]:
+    def _guess_seqtype(self) -> Literal["dna", "pep"]:
         """Guess the sequence type of the file.
 
         This method must be implemented by subclasses to handle the specific logic for guessing sequence type.
@@ -802,7 +802,7 @@ class SeqDataListABC(DataListABC[_SeqFileWrapperABC]):
             KeyError: If the item already exists.
             SeqtypeError: If items represent different sequence types.
         """
-        self._seqtype: Literal["dna", "pep", "rna", "NaN"] = "NaN"
+        self._seqtype: Literal["dna", "pep", "NaN"] = "NaN"
         super().__init__(data, names, seqtype=seqtype)
         self._data: list[_SeqFileWrapperABC]
 
@@ -832,7 +832,7 @@ class SeqDataListABC(DataListABC[_SeqFileWrapperABC]):
         return super().__eq__(other)
 
     @property
-    def seqtype(self) -> Literal["dna", "pep", "rna", "NaN"]:
+    def seqtype(self) -> Literal["dna", "pep", "NaN"]:
         """Retrieves the common sequence type shared by all files in this object.
 
         Returns:

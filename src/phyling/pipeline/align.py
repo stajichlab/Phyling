@@ -6,7 +6,7 @@ import logging
 import re
 from multiprocessing import Manager, Pool
 from pathlib import Path
-from typing import Literal, Sequence
+from typing import Literal, Sequence, cast
 
 from Bio import SeqIO
 
@@ -37,19 +37,20 @@ def align(
 ) -> None:
     """A pipeline that do hmmsearch to identify orthologs and align them through hmmalign or MUSCLE."""
 
-    inputs_, markerset_, evalue_, method_ = _args_check(inputs, markerset, evalue, method)
+    inputs, markerset_, evalue_, method_ = _args_check(inputs, markerset, evalue, method)
     output = Path(output)
 
-    logger.info("Found %s samples.", len(inputs_))
+    logger.info("Found %s samples.", len(inputs))
     names = [
         re.sub(
             r"(\.(aa|pep|cds|fna|faa))?\.(fasta|fas|faa|fna|seq|fa)(\.gz)?",
             "",
             sample.name,
         )
-        for sample in inputs_
+        for sample in inputs
     ]
-    samples = SampleList(inputs_, names, seqtype=seqtype)
+    samples = SampleList(inputs, names, seqtype=seqtype)
+    seqtype = cast(Literal["dna", "pep"], samples.seqtype)
 
     logger.info("Loading markerset from %s...", markerset_)
     hmmmarkerset = HMMMarkerSet(markerset_, markerset_.parent / "scores_cutoff")

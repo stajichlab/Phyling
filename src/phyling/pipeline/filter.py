@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Literal, Sequence
+from typing import Literal, Sequence, cast
 
 from ..lib import FileExts, SeqTypes, TreeMethods
 from ..lib._utils import Timer, check_threads
@@ -28,12 +28,13 @@ def filter(
 ) -> None:
     """A pipeline that filter the multiple sequence alignment results through their treeness/RCVs."""
 
-    inputs_ = _input_check(inputs, top_n_toverr)
+    inputs = _input_check(inputs, top_n_toverr)
     output = Path(output)
 
-    logger.info("Found %s MSA fasta.", len(inputs_))
+    logger.info("Found %s MSA fasta.", len(inputs))
 
-    mfa2treelist = MFA2TreeList(data=inputs_, seqtype=seqtype)
+    mfa2treelist = MFA2TreeList(data=inputs, seqtype=seqtype)
+    seqtype = cast(Literal["dna", "pep"], mfa2treelist.seqtype)
 
     # Params for precheck
     params = {"top_n_toverr": top_n_toverr}

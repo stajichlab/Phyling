@@ -274,15 +274,19 @@ class SampleSeqs(_abc.SeqFileWrapperABC):
         """
         return run_hmmsearch(self, hmms, evalue=evalue, threads=threads)
 
-    def _guess_seqtype(self) -> Literal["dna", "pep", "rna", "NaN"]:
+    def _guess_seqtype(self) -> Literal["dna", "pep"]:
         """Guess and return the sequence type."""
         f = gzip.open(self.file, "rt") if is_gzip_file(self.file) else open(self.file)
 
         for r in SeqIO.FastaIO.SimpleFastaParser(f):
             seqtype = guess_seqtype(r[1], ignore_failed=True)
-            if seqtype:
+            if seqtype in (SeqTypes.DNA, SeqTypes.PEP, SeqTypes.RNA):
                 break
         f.close()
+        if seqtype == "NaN":
+            raise SeqtypeError(f"Cannot determine seqtype of {self.file}.")
+        if seqtype == SeqTypes.RNA:
+            raise SeqtypeError(f"Invalid seqtype: {seqtype} determined from {self.file}")
         return seqtype
 
     def _process_pep_seqs(self, seqblock: DigitalSequenceBlock[AA]) -> None:

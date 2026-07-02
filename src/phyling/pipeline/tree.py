@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import shutil
 from pathlib import Path
-from typing import Literal, Sequence
+from typing import Literal, Sequence, cast
 
 import matplotlib.pyplot as plt
 from Bio import Phylo
@@ -37,10 +37,11 @@ def tree(
 ) -> None:
     """A pipeline that build phylogenetic tree through either FastTree, RAxML-NG or IQ-TREE."""
 
-    inputs_ = _input_check(inputs)
-    logger.info("Found %s MSA fasta.", len(inputs_))
+    inputs = _input_check(inputs)
+    logger.info("Found %s MSA fasta.", len(inputs))
 
-    mfa2treelist = MFA2TreeList(inputs_, seqtype=seqtype)
+    mfa2treelist = MFA2TreeList(inputs, seqtype=seqtype)
+    seqtype = cast(Literal["dna", "pep"], mfa2treelist.seqtype)
     partition = _validate_partition(partition, method, concat)
 
     output = Path(output)
