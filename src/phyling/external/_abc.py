@@ -7,7 +7,7 @@ import subprocess
 from abc import ABC
 from functools import wraps
 from pathlib import Path
-from typing import Callable, Generic, Literal, TypeVar, cast
+from typing import Callable, Generic, Literal, TypeVar, Union, cast
 
 try:
     # Try the modern location first
@@ -24,7 +24,7 @@ from ..lib._utils import CheckAttrs
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
-_O = TypeVar("_O", Path, Path | None)
+_O = TypeVar("_O", Path, Union[Path, None])
 _S = TypeVar("_S", bound=Literal["DNA", "AA", "AUTO"])
 
 
