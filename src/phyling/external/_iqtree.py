@@ -29,7 +29,7 @@ from ._models import (
 )
 
 IQTREE_BIN = check_binary(
-    TreeMethods.IQTREE.method, TreeMethods.IQTREE.bins, "bioconda::iqtree", "https://github.com/iqtree/iqtree2"
+    TreeMethods.IQTREE.method, TreeMethods.IQTREE.bins, "bioconda::iqtree", "https://github.com/iqtree/iqtree3"
 )
 
 
