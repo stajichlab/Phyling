@@ -65,7 +65,7 @@ addopts = "-ra -vv"
 testpaths = ["tests"]
 
 [tool.coverage.run]
-source = ["orthosynassign"]
+source = ["phyling"]
 omit = [
   "**/__init__.py",
   "**/_[^_]*.py",

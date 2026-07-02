@@ -22,8 +22,8 @@ jobs:
       - name: Download raxml-ng executable
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          wget https://github.com/amkozlov/raxml-ng/releases/download/1.2.2/raxml-ng_v1.2.2_linux_x86_64.zip
-          unzip raxml-ng_v1.2.2_linux_x86_64.zip
+          wget https://github.com/amkozlov/raxml-ng/releases/download/2.0.2/raxml-ng_v2.0.2_linux_x86_64.zip
+          unzip raxml-ng_v2.0.2_linux_x86_64.zip
 
       - name: Move executable
         if: steps.cache.outputs.cache-hit != 'true'

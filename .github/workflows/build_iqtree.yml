@@ -12,25 +12,25 @@ jobs:
         id: cache
         uses: actions/cache@v6
         with:
-          path: ~/.local/bin/iqtree2
+          path: ~/.local/bin/iqtree3
           key: ${{ runner.os }}-IQTree
 
       - name: Download IQTree executable
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get install wget
-          wget https://github.com/iqtree/iqtree2/releases/download/v2.4.0/iqtree-2.4.0-Linux-intel.tar.gz
-          tar zxf iqtree-2.4.0-Linux-intel.tar.gz
+          wget https://github.com/iqtree/iqtree3/releases/download/v3.1.2/iqtree-3.1.2-Linux-intel.tar.gz
+          tar zxf iqtree-3.1.2-Linux-intel.tar.gz
 
       - name: Move executable
         if: steps.cache.outputs.cache-hit != 'true'
         working-directory: ${{ github.workspace }}
         run: |
           mkdir -p ~/.local/bin
-          cp iqtree-2.4.0-Linux-intel/bin/iqtree2 ~/.local/bin/
-          chmod +x ~/.local/bin/iqtree2
+          cp iqtree-3.1.2-Linux-intel/bin/iqtree3 ~/.local/bin/
+          chmod +x ~/.local/bin/iqtree3
 
       - name: Export IQTree to PATH and verify
         run: |
           export PATH=$PATH:$HOME/.local/bin
-          which iqtree2
+          which iqtree3
