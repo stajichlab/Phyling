@@ -1,12 +1,11 @@
 [![CI/build and test](https://github.com/stajichlab/Phyling/actions/workflows/build_and_test.yml/badge.svg)](https://github.com/stajichlab/Phyling/actions/workflows/build_and_test.yml)
 [![CI/Conda build and test](https://github.com/stajichlab/Phyling/actions/workflows/conda_build_and_test.yml/badge.svg?branch=main)](https://github.com/stajichlab/Phyling/actions/workflows/conda_build_and_test.yml)
-[![Python](https://img.shields.io/badge/python-3.9_%7C_3.10_%7C_3.11_%7C_3.12_%7C_3.13-blue?logo=python)](https://github.com/stajichlab/Phyling/actions/workflows/build_and_test.yml)
+[![Python](https://img.shields.io/badge/python-3.9_%7C_3.10_%7C_3.11_%7C_3.12_%7C_3.13_%7C_3.14-blue?logo=python)](https://github.com/stajichlab/Phyling/actions/workflows/build_and_test.yml)
 [![codecov](https://codecov.io/gh/stajichlab/Phyling/graph/badge.svg?token=ZH5GBQYKZ6)](https://codecov.io/gh/stajichlab/Phyling)
 [![License](https://img.shields.io/github/license/stajichlab/Phyling?label=license)](https://github.com/stajichlab/Phyling/blob/main/LICENSE)
 [![Conda](https://anaconda.org/bioconda/phyling/badges/version.svg)][Bioconda]
 [![Last updated](https://anaconda.org/bioconda/phyling/badges/latest_release_date.svg)][Bioconda]
 [![DOI](https://img.shields.io/badge/DOI-10.1101%2F2025.07.30.666921-blue)](https://www.biorxiv.org/content/10.1101/2025.07.30.666921)
-
 
 # Phyling tool
 
@@ -446,11 +445,13 @@ However, some of the Phyling dependencies do not available on pip, so you need t
 You can also directly `git clone` the main or other branches.
 
 ssh
+
 ```sh
 git clone git@github.com:stajichlab/Phyling.git
 ```
 
 or https
+
 ```sh
 git clone https://github.com/stajichlab/Phyling.git
 ```
