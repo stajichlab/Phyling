@@ -10,20 +10,20 @@ from ._abc import BinaryWrapper
 MUSCLE_BIN = check_binary("Muscle", ("muscle",), "bioconda::muscle", "https://github.com/rcedgar/muscle")
 
 
-class Muscle(BinaryWrapper):
+class Muscle(BinaryWrapper[Path]):
     _prog: str = "Muscle"
 
     def __init__(self, file: str | Path, output: str | Path, *, threads: int = 1):
-        super().__init__(file, output, threads=threads)
-        print(self._output)
+        super().__init__(file, output)
+        self._construct_cmd(threads=threads)
 
-    def _construct_cmd(self, file: Path, output: Path, *, threads: int = 1):
+    def _construct_cmd(self, *, threads: int = 1):
         self._cmd = [
             MUSCLE_BIN,
             "-align",
-            str(file),
+            str(self._file),
             "-output",
-            str(output),
+            str(self._output),
             "-threads",
             str(threads),
         ]

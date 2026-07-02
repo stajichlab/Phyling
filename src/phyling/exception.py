@@ -17,3 +17,9 @@ class EmptyWarning(UserWarning):
     """An empty item returned which will cause potential error in the following step."""
 
     pass
+
+
+class AlreadyExecutedError(RuntimeError):
+    """The function has already been executed and cannot be repeatedly executed."""
+
+    pass

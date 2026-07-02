@@ -16,7 +16,7 @@ FASTTREE_BIN = check_binary(
 )
 
 
-class FastTree(TreeToolWrapper):
+class FastTree(TreeToolWrapper[Literal["DNA", "AA"]]):
     """Runs FastTree to build a phylogenetic tree from the given MFA2Tree object.
 
     Args:
@@ -30,6 +30,7 @@ class FastTree(TreeToolWrapper):
 
     _prog: str = TreeMethods.FT.method
     _cmd_log = "stderr"
+    _ALLOWED_SEQTYPES: tuple[str, ...] = ("DNA", "AA")
 
     def __init__(
         self,
@@ -41,35 +42,28 @@ class FastTree(TreeToolWrapper):
         seed: int = -1,
         noml: bool = False,
     ):
-        super().__init__(file, output, seqtype=seqtype, model=model, seed=seed, noml=noml)
+        super().__init__(file, output, seqtype=seqtype, model=model)
 
-    def _construct_cmd(
-        self,
-        file: Path,
-        output: Path,
-        *,
-        seqtype: Literal["DNA", "AA"],
-        model: str = "AUTO",
-        noml: bool,
-        seed: int,
-    ):
+        self._construct_cmd(seed=seed, noml=noml)
+
+    def _construct_cmd(self, *, noml: bool, seed: int):
         self._cmd = [
             FASTTREE_BIN,
             "-nosupport",
             "-out",
-            str(output),
-            str(file),
+            str(self._output),
+            str(self._file),
         ]
-        model, *params = model.split("+")
-        if seqtype == "DNA":
+        model, *params = self._model.split("+")
+        if self._seqtype == "DNA":
             self._cmd.insert(1, "-nt")
             if model.upper() not in DNA_MODELS[DNA_MODELS[:, 0] != "", 0]:
-                raise ValueError(f"Model {model} is not supported in {TreeMethods.FT.method} with {seqtype} alignments.")
+                raise ValueError(f"Model {model} is not supported in {TreeMethods.FT.method} with {self._seqtype} alignments.")
             if model.upper() == "GTR":
                 self._cmd.insert(3, f"-{model.lower()}")
         else:
             if model.upper() not in PEP_MODELS[PEP_MODELS[:, 0] != "", 0]:
-                raise ValueError(f"Model {model} is not supported in {TreeMethods.FT.method} with {seqtype} alignments.")
+                raise ValueError(f"Model {model} is not supported in {TreeMethods.FT.method} with {self._seqtype} alignments.")
             if model.upper() in ("LG", "WAG"):
                 self._cmd.insert(2, f"-{model.lower()}")
 

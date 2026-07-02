@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from abc import ABC, abstractmethod
+from abc import ABC
 from functools import wraps
 from pathlib import Path
-from typing import Callable, Literal, TypeVar
+from typing import Callable, Generic, Literal, TypeVar, cast
 
 try:
     # Try the modern location first
@@ -17,12 +17,15 @@ except ImportError:
     from typing_extensions import Concatenate, ParamSpec
 
 
+from ..exception import AlreadyExecutedError, SeqtypeError
 from ..lib import SeqTypes
 from ..lib._utils import CheckAttrs
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
+_O = TypeVar("_O", Path, Path | None)
+_S = TypeVar("_S", bound=Literal["DNA", "AA", "AUTO"])
 
 
 def _check_attributes(*attrs: str) -> Callable[[Callable[Concatenate[_T, _P], _R]], Callable[Concatenate[_T, _P], _R]]:
@@ -53,20 +56,19 @@ def _check_attributes(*attrs: str) -> Callable[[Callable[Concatenate[_T, _P], _R
     return decorator
 
 
-class BinaryWrapper(ABC):
+class BinaryWrapper(ABC, Generic[_O]):
     _prog: str
     _cmd_log: Literal["stdout", "stderr"] = "stdout"
-    __slots__ = ("_logger", "_output", "_cmd", "_result", "done")
+    __slots__ = ("_logger", "_file", "_output", "_cmd", "_result", "done")
+    _output: _O
 
-    def __init__(self, file: str | Path, output: str | Path | None = None, *args, **kwargs) -> None:
-        file = Path(file)
-        if not file.exists():
-            raise FileNotFoundError(f"{file}")
-        self._output = Path(output) if output else None
-        args, kwargs = self._params_check(*args, **kwargs)
-        self._construct_cmd(file, self._output, *args, **kwargs)
-        self._cmd: list[str]
+    def __init__(self, file: str | Path, output: str | Path | None = None) -> None:
+        self._file = Path(file)
+        if not self._file.exists():
+            raise FileNotFoundError(f"{self._file}")
+        self._output = cast(_O, Path(output) if output else None)
         self.done = False
+        self._cmd: list[str]
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
@@ -74,7 +76,14 @@ class BinaryWrapper(ABC):
 
     def run(self) -> None:
         """Execute the command."""
-        if self._output:
+        if self.done:
+            raise AlreadyExecutedError(
+                f"The {self._prog} instance for {self._file.name} has already been executed. "
+                "To run again, you must instantiate a new tool wrapper."
+            )
+        if not hasattr(self, "_cmd"):
+            RuntimeError(f"{self._prog} failed without cmd constructed")
+        if isinstance(self._output, Path):
             self._output.parent.mkdir(parents=True, exist_ok=True)
         self._logger.debug(self.cmd)
         try:
@@ -96,52 +105,42 @@ class BinaryWrapper(ABC):
     def cmd(self) -> str:
         return " ".join(self._cmd)
 
-    def _params_check(self, *args, **kwargs) -> tuple[tuple, dict]:
-        return args, kwargs
-
-    @abstractmethod
-    def _construct_cmd(self, file: Path, output: Path | None, *args, **kwargs) -> None: ...
-
     def _post_run(self):
         pass
 
 
-class TreeToolWrapper(BinaryWrapper):
-    __slots__ = ("_model",)
+class TreeToolWrapper(BinaryWrapper[Path], Generic[_S]):
+    __slots__ = ("_seqtype", "_model")
+
+    _ALLOWED_SEQTYPES: tuple[str, ...] = ("DNA", "AA", "AUTO")
+    _seqtype: _S
 
     def __init__(
         self,
         file: str | Path,
         output: str | Path,
-        *args,
+        *,
         seqtype: Literal["dna", "pep", "AUTO"] = "AUTO",
         model: str = "AUTO",
         **kwargs,
     ) -> None:
-        super().__init__(file, output, *args, seqtype=seqtype, model=model, **kwargs)
+        super().__init__(file, output)
+        if seqtype == SeqTypes.DNA:
+            target = "DNA"
+        elif seqtype == SeqTypes.PEP:
+            target = "AA"
+        else:
+            target = "AUTO"
+
+        if target not in self._ALLOWED_SEQTYPES:
+            raise SeqtypeError(
+                f"Invalid seqtype: {seqtype} for {self.__class__.__name__}. Allowed choices are: {list(self._ALLOWED_SEQTYPES)}"
+            )
+
+        self._seqtype = cast(_S, target)
         self._model: str = model
 
     @property
     @_check_attributes("done")
     def model(self) -> str:
         return self._model
-
-    def _params_check(self, *args, seqtype: str, **kwargs) -> tuple[tuple, dict]:
-        if seqtype == SeqTypes.DNA:
-            seqtype = "DNA"
-        elif seqtype == SeqTypes.PEP:
-            seqtype = "AA"
-        else:
-            seqtype = "AUTO"
-        return super()._params_check(*args, seqtype=seqtype, **kwargs)
-
-    @abstractmethod
-    def _construct_cmd(
-        self,
-        file: Path,
-        output: Path,
-        *args,
-        seqtype: Literal["DNA", "AA"] | None,
-        model: str,
-        **kwargs,
-    ) -> None: ...

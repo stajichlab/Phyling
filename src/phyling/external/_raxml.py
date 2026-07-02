@@ -16,7 +16,7 @@ RAXML_BIN = check_binary(
 )
 
 
-class Raxml(TreeToolWrapper):
+class Raxml(TreeToolWrapper[Literal["DNA", "AA", "AUTO"]]):
     """Runs RAxML-NG to build a phylogenetic tree from the given MFA2Tree object.
 
     Args:
@@ -58,7 +58,8 @@ class Raxml(TreeToolWrapper):
             If capture_cmd is False (default), returns a Tree object.
             If capture_cmd is True, returns a tuple of the Tree object and the command string.
         """
-        super().__init__(file, output, seqtype=seqtype, model=model, seed=seed, threads=threads, threads_max=threads_max)
+        super().__init__(file, output, seqtype=seqtype, model=model)
+        self._construct_cmd(seed=seed, threads=threads, threads_max=threads_max)
 
     def _post_run(self):
         if not self._output:
@@ -79,11 +80,7 @@ class Raxml(TreeToolWrapper):
 
     def _construct_cmd(
         self,
-        file: Path,
-        output: Path,
         *,
-        seqtype: Literal["DNA", "AA"] | None,
-        model: str,
         seed: int,
         threads: int,
         threads_max: int,
@@ -91,17 +88,16 @@ class Raxml(TreeToolWrapper):
         self._cmd = [
             RAXML_BIN,
             "--msa",
-            str(file),
+            str(self._file),
             "--prefix",
-            str(output),
+            str(self._output),
             "--model",
-            model,
+            self._model,
             "--threads",
             str(threads) if threads >= 1 else f"auto{{{threads_max}}}",
         ]
-        if seqtype:
-            self._cmd.extend(["--data-type", seqtype])
+        self._cmd.extend(["--data-type", self._seqtype])
         if seed >= 0:
             self._cmd.extend(["--seed", str(seed)])
 
-        self._output = Path(f"{output}.raxml.bestTree")
+        self._output = self._output.with_suffix(".raxml.bestTree")

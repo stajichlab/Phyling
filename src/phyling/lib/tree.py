@@ -370,7 +370,7 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
                 runner = FastTree(
                     self.file,
                     output / f"{self.file.name}.nw",
-                    seqtype=cast(Literal["dna", "pep"], self.seqtype),
+                    seqtype=self.seqtype,
                     model=str(model),
                     noml=noml,
                     **kwargs,
@@ -378,8 +378,8 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
             elif method_upper == TreeMethods.RAXML.name:
                 runner = Raxml(
                     self.file,
-                    output / self.file.name,
-                    seqtype=cast(Literal["AUTO", "dna", "pep"], self.seqtype),
+                    output / self.file.name.split(".")[0],
+                    seqtype=self.seqtype,
                     model=str(model),
                     seed=seed,
                     threads=threads,
@@ -389,8 +389,8 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
             elif method_upper == TreeMethods.IQTREE.name:
                 runner = Iqtree(
                     self.file,
-                    output / self.file.name,
-                    seqtype=cast(Literal["AUTO", "dna", "pep"], self.seqtype),
+                    output / self.file.name.split(".")[0],
+                    seqtype=self.seqtype,
                     model=str(model),
                     seed=seed,
                     threads=threads,
