@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import shutil
 from pathlib import Path
 from typing import Literal, Sequence, cast
 
@@ -95,7 +94,7 @@ def tree(
     """Output the tree in newick format and figure."""
     output_tree = output / TreeOutputFiles.TREE_NW
     logger.info("Output tree to %s", output_tree)
-    shutil.copy(tree, output_tree)
+    output_tree.symlink_to(tree.parent.relative_to(output_tree.parent) / tree.name)
 
     if figure:
         fig, ax = plt.subplots(figsize=(20, 12))
