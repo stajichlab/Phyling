@@ -15,7 +15,6 @@ LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 def run_cli() -> None:
     """Runs the orthoSynAssign CLI entry point."""
     parsed_args = main_menu(sys.argv[1:])
-    print(parsed_args)
     sys.exit(main(parsed_args))
 
 

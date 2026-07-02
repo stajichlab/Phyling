@@ -106,9 +106,6 @@ def main_menu(argv=None) -> Args:
         # Add module-specific arguments
         module.add_args(subparser)
 
-        # Add shared help/options to each subparser if needed
-        # (Alternatively, keep them only on the parent)
-
     # Global options
     opt_args = parser.add_argument_group("Options")
     opt_args.add_argument("-h", "--help", action="help", help="show this help message and exit")
@@ -305,6 +302,7 @@ class Filter(BaseModule):
         )
         opt_args.add_argument("-v", "--verbose", action="store_true", help="Verbose mode for debug")
         opt_args.add_argument("-h", "--help", action="help", help="show this help message and exit")
+        super().add_args(parser)
 
 
 class Tree(BaseModule):
@@ -397,3 +395,4 @@ class Tree(BaseModule):
         )
         opt_args.add_argument("-v", "--verbose", action="store_true", help="Verbose mode for debug")
         opt_args.add_argument("-h", "--help", action="help", help="show this help message and exit")
+        super().add_args(parser)
