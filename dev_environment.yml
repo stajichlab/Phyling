@@ -1,8 +1,8 @@
 name: phyling
 channels:
-  - bioconda
   - conda-forge
-  - main
+  - bioconda
+  - defaults
 dependencies:
   - aster>=1.19
   - fasttree>=2.1.1

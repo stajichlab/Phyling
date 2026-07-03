@@ -26,6 +26,9 @@ jobs:
           environment-file: dev_environment.yml
           create-args: >-
             python=3.13
+            --repodata-ttl 0
+          cache-environment: false
+          cache-downloads: false
 
       - name: Lint with Ruff
         uses: astral-sh/ruff-action@v3
