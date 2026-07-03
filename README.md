@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/stajichlab/Phyling?label=license)](https://github.com/stajichlab/Phyling/blob/main/LICENSE)
 [![Conda](https://anaconda.org/bioconda/phyling/badges/version.svg)][Bioconda]
 [![Last updated](https://anaconda.org/bioconda/phyling/badges/latest_release_date.svg)][Bioconda]
-[![DOI](https://img.shields.io/badge/DOI-10.1101%2F2025.07.30.666921-blue)](https://www.biorxiv.org/content/10.1101/2025.07.30.666921)
+[![DOI](https://img.shields.io/badge/DOI-10.1093/g3journal/jkag062-blue)](https://doi.org/10.1093/g3journal/jkag062)
 
 # Phyling tool
 
