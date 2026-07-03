@@ -8,16 +8,16 @@ from ._muscle import Muscle
 from ._raxml import Raxml
 
 __all__ = [
-    Astral,
-    FastTree,
-    Concordance,
-    Iqtree,
-    ModelFinder,
-    UFBoot,
-    NexusHandler,
-    PartitionRecord,
-    Partitions,
-    RaxmlHandler,
-    Muscle,
-    Raxml,
+    "Astral",
+    "FastTree",
+    "Concordance",
+    "Iqtree",
+    "ModelFinder",
+    "UFBoot",
+    "NexusHandler",
+    "PartitionRecord",
+    "Partitions",
+    "RaxmlHandler",
+    "Muscle",
+    "Raxml",
 ]
