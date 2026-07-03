@@ -28,9 +28,11 @@ from ._models import (
     RaxmlHandler,
 )
 
-IQTREE_BIN = check_binary(
-    TreeMethods.IQTREE.method, TreeMethods.IQTREE.bins, "bioconda::iqtree", "https://github.com/iqtree/iqtree3"
-)
+
+def _get_bin():
+    return check_binary(
+        TreeMethods.IQTREE.method, TreeMethods.IQTREE.bins, "bioconda::iqtree", "https://github.com/iqtree/iqtree3"
+    )
 
 
 class ModelFinder(BinaryWrapper[Path]):
@@ -151,7 +153,7 @@ class ModelFinder(BinaryWrapper[Path]):
         threads_max: int,
     ):
         self._cmd = [
-            IQTREE_BIN,
+            _get_bin(),
             "-s",
             str(self._file.absolute()),
             "--prefix",
@@ -207,7 +209,7 @@ class Iqtree(TreeToolWrapper[Literal["DNA", "AA", "AUTO"]]):
 
     def _construct_cmd(self, *, seed: int, threads: int, threads_max: int):
         self._cmd = [
-            IQTREE_BIN,
+            _get_bin(),
             "-s",
             str(self._file.absolute()),
             "--prefix",
@@ -256,7 +258,7 @@ class UFBoot(TreeToolWrapper[Literal["DNA", "AA", "AUTO"]]):
 
     def _construct_cmd(self, *, tree: Path, bs: int, seed: int, threads: int, threads_max: int):
         self._cmd = [
-            IQTREE_BIN,
+            _get_bin(),
             "-s",
             str(self._file.absolute()),
             "--prefix",
@@ -309,7 +311,7 @@ class Concordance(TreeToolWrapper[Literal["DNA", "AA", "AUTO"]]):
 
     def _construct_cmd(self, *, tree: Path, scfl: int, seed: int, threads: int, threads_max: int):
         self._cmd = [
-            IQTREE_BIN,
+            _get_bin(),
             "-s",
             str(self._file.absolute()),
             "--prefix",

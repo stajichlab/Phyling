@@ -7,7 +7,9 @@ from pathlib import Path
 from ..lib._utils import check_binary
 from ._abc import BinaryWrapper
 
-MUSCLE_BIN = check_binary("Muscle", ("muscle",), "bioconda::muscle", "https://github.com/rcedgar/muscle")
+
+def _get_bin():
+    return check_binary("Muscle", ("muscle",), "bioconda::muscle", "https://github.com/rcedgar/muscle")
 
 
 class Muscle(BinaryWrapper[Path]):
@@ -19,7 +21,7 @@ class Muscle(BinaryWrapper[Path]):
 
     def _construct_cmd(self, *, threads: int = 1):
         self._cmd = [
-            MUSCLE_BIN,
+            _get_bin(),
             "-align",
             str(self._file),
             "-output",

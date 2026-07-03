@@ -11,9 +11,11 @@ from ..lib._utils import check_binary
 from ._abc import TreeToolWrapper
 from ._models import DNA_MODELS, PEP_MODELS
 
-FASTTREE_BIN = check_binary(
-    TreeMethods.FT.method, TreeMethods.FT.bins, "bioconda::fasttree", "https://github.com/morgannprice/fasttree"
-)
+
+def _get_bin():
+    return check_binary(
+        TreeMethods.FT.method, TreeMethods.FT.bins, "bioconda::fasttree", "https://github.com/morgannprice/fasttree"
+    )
 
 
 class FastTree(TreeToolWrapper[Literal["DNA", "AA"]]):
@@ -48,7 +50,7 @@ class FastTree(TreeToolWrapper[Literal["DNA", "AA"]]):
 
     def _construct_cmd(self, *, noml: bool, seed: int):
         self._cmd = [
-            FASTTREE_BIN,
+            _get_bin(),
             "-nosupport",
             "-out",
             str(self._output),

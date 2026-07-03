@@ -7,9 +7,9 @@ dependencies:
   - aster>=1.19
   - fasttree>=2.1.1
   - iqtree>=3.1.2
-  - muscle>=5.3
+  # - muscle>=5.3
   - python>=3.9,<3.15
-  - raxml-ng>=2.0.2
+  # - raxml-ng>=2.0.2
   - samtools>=1.21
   - pip
   - pip:

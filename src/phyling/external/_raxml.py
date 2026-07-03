@@ -11,9 +11,11 @@ from ..lib._utils import check_binary
 from ._abc import TreeToolWrapper
 from ._models import NexusHandler, RaxmlHandler
 
-RAXML_BIN = check_binary(
-    TreeMethods.RAXML.method, TreeMethods.RAXML.bins, "bioconda::raxml-ng", "https://github.com/amkozlov/raxml-ng"
-)
+
+def _get_bin():
+    return check_binary(
+        TreeMethods.RAXML.method, TreeMethods.RAXML.bins, "bioconda::raxml-ng", "https://github.com/amkozlov/raxml-ng"
+    )
 
 
 class Raxml(TreeToolWrapper[Literal["DNA", "AA", "AUTO"]]):
@@ -86,7 +88,7 @@ class Raxml(TreeToolWrapper[Literal["DNA", "AA", "AUTO"]]):
         threads_max: int,
     ):
         self._cmd = [
-            RAXML_BIN,
+            _get_bin(),
             "--msa",
             str(self._file),
             "--prefix",

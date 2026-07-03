@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import pickle
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -11,7 +12,8 @@ from ..lib import FileExts, TreeOutputFiles
 from ..lib._utils import CheckAttrs, remove_dirs, remove_files
 from ..lib.align import SampleList, SearchHitsManager
 from ..lib.tree import MFA2TreeList
-from . import logger
+
+logger = logging.getLogger(__name__)
 
 
 class OutputPrecheckABC(ABC):

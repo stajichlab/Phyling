@@ -7,7 +7,9 @@ from pathlib import Path
 from ..lib._utils import check_binary
 from ._abc import BinaryWrapper
 
-ASTRAL_BIN = check_binary("ASTRAL", ("astral",), "bioconda::aster", "https://github.com/chaoszhang/ASTER")
+
+def _get_bin():
+    return check_binary("ASTRAL", ("astral",), "bioconda::aster", "https://github.com/chaoszhang/ASTER")
 
 
 class Astral(BinaryWrapper[Path]):
@@ -30,7 +32,7 @@ class Astral(BinaryWrapper[Path]):
         self._construct_cmd(seed=seed, threads=threads)
 
     def _construct_cmd(self, *, seed: int, threads: int):
-        self._cmd = [ASTRAL_BIN, "--output", str(self._output), "--thread", str(threads), str(self._file)]
+        self._cmd = [_get_bin(), "--output", str(self._output), "--thread", str(threads), str(self._file)]
 
         if seed >= 0:
             self._cmd[-1:-1] = ["--seed", str(seed)]
