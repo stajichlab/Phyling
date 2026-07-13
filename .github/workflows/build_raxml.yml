@@ -1,39 +1,53 @@
 name: Build raxml-ng
 
-on: workflow_call
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: false
+        type: string
+        default: "2.0.2"
 
 jobs:
   build_raxml:
     name: Build raxml-ng
     runs-on: ubuntu-latest
 
+    env:
+      URL: ${{ format('https://github.com/amkozlov/raxml-ng/releases/download/{0}/raxml-ng_v{0}_linux_x86_64.zip', inputs.version) }}
+
     steps:
-      - name: Cache raxml-ng
-        id: cache
+      - name: Check for cached binary
+        id: binary-cache
         uses: actions/cache@v6
         with:
-          path: ~/.local/bin/raxml-ng
-          key: ${{ runner.os }}-raxml-ng
+          path: bin-payload/raxml-ng
+          key: ${{ runner.os }}-raxml
 
       - name: Install dependencies
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: sudo apt-get install build-essential g++ wget unzip
-
-      - name: Download raxml-ng executable
-        if: steps.cache.outputs.cache-hit != 'true'
+        if: steps.binary-cache.outputs.cache-hit != 'true'
         run: |
-          wget https://github.com/amkozlov/raxml-ng/releases/download/2.0.2/raxml-ng_v2.0.2_linux_x86_64.zip
-          unzip raxml-ng_v2.0.2_linux_x86_64.zip
+          sudo apt update
+          sudo apt-get install build-essential g++ wget unzip
+
+      - name: Compile/Download
+        if: steps.binary-cache.outputs.cache-hit != 'true'
+        run: |
+          wget ${{ env.URL }}
+          unzip raxml-ng_v${{ inputs.version }}_linux_x86_64.zip
 
       - name: Move executable
-        if: steps.cache.outputs.cache-hit != 'true'
-        working-directory: ${{ github.workspace }}
+        if: steps.binary-cache.outputs.cache-hit != 'true'
         run: |
-          mkdir -p ~/.local/bin
-          cp raxml-ng ~/.local/bin/
-          chmod +x ~/.local/bin/raxml-ng
+          mkdir -p bin-payload
+          cp raxml-ng bin-payload/
+          chmod +x bin-payload/raxml-ng
 
-      - name: Export raxml-ng to PATH and verify
-        run: |
-          export PATH=$PATH:$HOME/.local/bin
-          which raxml-ng
+      - name: Verify executable locally
+        run: ./bin-payload/raxml-ng --help || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: raxml-binary-payload
+          path: bin-payload/raxml-ng

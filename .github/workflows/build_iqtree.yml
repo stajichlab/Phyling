@@ -1,36 +1,53 @@
 name: Build IQTree
 
-on: workflow_call
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: false
+        type: string
+        default: "3.1.2"
 
 jobs:
   build_iqtree:
     name: Build IQTree
     runs-on: ubuntu-latest
 
+    env:
+      URL: ${{ format('https://github.com/iqtree/iqtree3/releases/download/v{0}/iqtree-{0}-Linux-intel.tar.gz', inputs.version) }}
+
     steps:
-      - name: Cache IQTree
-        id: cache
+      - name: Check for cached binary
+        id: binary-cache
         uses: actions/cache@v6
         with:
-          path: ~/.local/bin/iqtree3
-          key: ${{ runner.os }}-IQTree
+          path: bin-payload/iqtree3
+          key: ${{ runner.os }}-iqtree
 
-      - name: Download IQTree executable
-        if: steps.cache.outputs.cache-hit != 'true'
+      - name: Install dependencies
+        if: steps.binary-cache.outputs.cache-hit != 'true'
         run: |
+          sudo apt update
           sudo apt-get install wget
-          wget https://github.com/iqtree/iqtree3/releases/download/v3.1.2/iqtree-3.1.2-Linux-intel.tar.gz
-          tar zxf iqtree-3.1.2-Linux-intel.tar.gz
+
+      - name: Compile/Download
+        if: steps.binary-cache.outputs.cache-hit != 'true'
+        run: |
+          wget ${{ env.URL }}
+          tar zxf iqtree-${{ inputs.version }}-Linux-intel.tar.gz
 
       - name: Move executable
-        if: steps.cache.outputs.cache-hit != 'true'
-        working-directory: ${{ github.workspace }}
+        if: steps.binary-cache.outputs.cache-hit != 'true'
         run: |
-          mkdir -p ~/.local/bin
-          cp iqtree-3.1.2-Linux-intel/bin/iqtree3 ~/.local/bin/
-          chmod +x ~/.local/bin/iqtree3
+          mkdir -p bin-payload
+          cp iqtree-${{ inputs.version }}-Linux-intel/bin/iqtree3 bin-payload/
+          chmod +x bin-payload/iqtree3
 
-      - name: Export IQTree to PATH and verify
-        run: |
-          export PATH=$PATH:$HOME/.local/bin
-          which iqtree3
+      - name: Verify executable locally
+        run: ./bin-payload/iqtree3 --help || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: iqtree-binary-payload
+          path: bin-payload/iqtree3

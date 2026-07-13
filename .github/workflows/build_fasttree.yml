@@ -7,29 +7,39 @@ jobs:
     name: Build FastTree
     runs-on: ubuntu-latest
 
+    env:
+      URL: http://www.microbesonline.org/fasttree/FastTree
+
     steps:
-      - name: Cache FastTree
-        id: cache
+      - name: Check for cached binary
+        id: binary-cache
         uses: actions/cache@v6
         with:
-          path: ~/.local/bin/FastTree
-          key: ${{ runner.os }}-FastTree
+          path: bin-payload/FastTree
+          key: ${{ runner.os }}-fasttree
 
-      - name: Download FastTree executable
-        if: steps.cache.outputs.cache-hit != 'true'
+      - name: Install dependencies
+        if: steps.binary-cache.outputs.cache-hit != 'true'
         run: |
+          sudo apt update
           sudo apt-get install wget
-          wget http://www.microbesonline.org/fasttree/FastTree
+
+      - name: Compile/Download
+        if: steps.binary-cache.outputs.cache-hit != 'true'
+        run: wget ${{ env.URL }}
 
       - name: Move executable
-        if: steps.cache.outputs.cache-hit != 'true'
-        working-directory: ${{ github.workspace }}
+        if: steps.binary-cache.outputs.cache-hit != 'true'
         run: |
-          mkdir -p ~/.local/bin
-          cp FastTree ~/.local/bin/
-          chmod +x ~/.local/bin/FastTree
+          mkdir -p bin-payload
+          cp FastTree bin-payload/
+          chmod +x bin-payload/FastTree
 
-      - name: Export FastTree to PATH and verify
-        run: |
-          export PATH=$PATH:$HOME/.local/bin
-          which FastTree
+      - name: Verify executable locally
+        run: ./bin-payload/FastTree --help || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: fasttree-binary-payload
+          path: bin-payload/FastTree
