@@ -35,9 +35,10 @@ jobs:
         with:
           version: "latest"
 
-      - name: Install package
-        run: pip install .
-        shell: micromamba-shell {0}
+      # Already installed in dev_environment.yml
+      # - name: Install package
+      #   run: pip install .
+      #   shell: micromamba-shell {0}
 
       - name: Pytest
         run: pytest -vv
