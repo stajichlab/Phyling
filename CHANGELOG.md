@@ -7,6 +7,12 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- Corrected version display metadata bug in package builds.
+
+### Changed
+- Migrated build backend configuration to Hatchling.
+
 ## [2.4.0] - 2026-07-03
 
 ### Added
