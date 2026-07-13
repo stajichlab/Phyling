@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=61.0", "versioningit"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "versioningit"]
+build-backend = "hatchling.build"
 
 [project]
 name = "phyling"
@@ -57,8 +57,21 @@ phyling = "phyling.main:run_cli"
 "Homepage" = "https://github.com/stajichlab/Phyling"
 "Bug Tracker" = "https://github.com/stajichlab/Phyling/issues"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src/phyling",
+  "/pyproject.toml",
+  "/LICENSE",
+  "/README.md",
+  "/CHANGELOG.md",
+  "/CITATION.cff",
+]
+
+[tool.hatch.version]
+source = "versioningit"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/phyling"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
@@ -66,12 +79,13 @@ addopts = "-ra -vv"
 testpaths = ["tests"]
 
 [tool.coverage.run]
-source = ["phyling"]
+source = ["src"]
 omit = [
   "**/__init__.py",
   "**/_[^_]*.py",
   "tests/*.py",
   "exception.py",
+  "*.egg-info/**",
 ]
 
 [tool.coverage.report]
@@ -86,6 +100,9 @@ exclude_lines = [
   "def _\\w+\\(",
   "async def _\\w+\\(",
 ]
+
+[tool.versioningit]
+default-version = "2.4.0"
 
 [tool.versioningit.vcs]
 method = "git"

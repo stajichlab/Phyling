@@ -1,9 +1,8 @@
 /misc export-ignore
 /tests export-ignore
 .github export-ignore
-.coveragerc export-ignore
 .gitattributes export-ignore
 .gitignore export-ignore
 .pre-commit-config.yaml export-ignore
-codecov.yml
+codecov.yml export-ignore
 dev_environment.yml export-ignore
