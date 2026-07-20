@@ -109,7 +109,7 @@ jobs:
           fetch-depth: 0
 
       - name: Download patch
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: release-patch
           path: .
@@ -160,19 +160,19 @@ jobs:
 
     steps:
       - name: Download ASTER binary
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: aster-binary-payload
           path: bin
 
       - name: Download FastTree binary
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: fasttree-binary-payload
           path: bin
 
       - name: Download IQTree binary
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: iqtree-binary-payload
           path: bin
@@ -197,7 +197,7 @@ jobs:
           sparse-checkout-cone-mode: true
 
       - name: Download sdist artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: sdist
           path: dist
@@ -240,7 +240,7 @@ jobs:
           fetch-tags: true
 
       - name: Download patch
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: release-patch
           path: .
@@ -259,7 +259,7 @@ jobs:
           git push --follow-tags
 
       - name: Download sdist artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: sdist
           path: dist

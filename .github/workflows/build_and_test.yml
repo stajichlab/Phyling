@@ -32,19 +32,19 @@ jobs:
 
     steps:
       - name: Download ASTER binary
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: aster-binary-payload
           path: bin
 
       - name: Download FastTree binary
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: fasttree-binary-payload
           path: bin
 
       - name: Download IQTree binary
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: iqtree-binary-payload
           path: bin
