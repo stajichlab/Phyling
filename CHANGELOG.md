@@ -7,6 +7,10 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Added support for pixi installation.
+
 ### Fixed
 - Corrected version display metadata bug in package builds.
 
