@@ -114,3 +114,26 @@ line-length = 130
 [tool.ruff.lint]
 select = ["E", "F", "I"]
 ignore = ["E203", "E402", "E701"]
+
+[tool.pixi.workspace]
+channels = ["conda-forge", "bioconda"]
+platforms = ["linux-64", "osx-64", "osx-arm64"]
+
+[tool.pixi.dependencies]
+python = ">=3.9,<3.15"
+
+[tool.pixi.feature.prod.pypi-dependencies]
+phyling = { path = ".", editable = false }
+
+[tool.pixi.feature.dev.pypi-dependencies]
+phyling = { path = ".", editable = true, extras = ["dev"] }
+
+[tool.pixi.feature.dev.dependencies]
+ruff = "*"
+
+[tool.pixi.tasks]
+test = "pytest"
+
+[tool.pixi.environments]
+default = { features = ["prod"] }
+dev = { features = ["dev"] }
