@@ -102,7 +102,7 @@ exclude_lines = [
 ]
 
 [tool.versioningit]
-default-version = "2.4.0"
+default-version = "2.4.1"
 
 [tool.versioningit.vcs]
 method = "git"

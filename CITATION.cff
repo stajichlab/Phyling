@@ -48,8 +48,8 @@ keywords:
   - Hidden Markov Models
   - Python
 license: MIT
-version: 2.4.0
-date-released: '2026-07-03'
+version: 2.4.1
+date-released: '2026-09-03'
 preferred-citation:
   type: article
   authors:
