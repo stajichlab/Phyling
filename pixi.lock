@@ -1197,14 +1197,14 @@ packages:
   - clipkit>=2.1.1
   - matplotlib>=3.5.3
   - numpy>=2.0.2,<3.0.0
-  - phykit>=2.0.1
+  - phykit>=2.4.1
   - pyfaidx>=0.9.0.3
   - pyhmmer>=0.12.0
   - typing-extensions ; python_full_version < '3.10'
   - pre-commit>=3.4.0 ; extra == 'dev'
   - pytest-cov>=5.0.0 ; extra == 'dev'
   - pytest>=8.0.0 ; extra == 'dev'
-  requires_python: '>=3.9,<3.15'
+  requires_python: '>=3.10,<3.15'
 - pypi: https://files.pythonhosted.org/packages/02/08/9c41fb51ab5b43eb21674aff13df270e8ba6c4b29c8624e328dc7a9482af/distlib-0.4.3-py2.py3-none-any.whl
   name: distlib
   version: 0.4.3
