@@ -1,0 +1,142 @@
+name: CD/Container
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  release:
+    types: [published]
+  workflow_call:
+    inputs:
+      ref:
+        description: "Tag to build the image from (e.g. v1.2.3)"
+        type: string
+        required: true
+      push:
+        description: "Push the built image to GHCR"
+        type: boolean
+        default: true
+      latest:
+        description: "Also tag this image as latest"
+        type: boolean
+        default: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Extra image tag to publish (e.g. testing). Leave blank to just build."
+        type: string
+        default: ""
+      push:
+        description: "Push the built image to GHCR"
+        type: boolean
+        default: false
+
+concurrency:
+  group: container-${{ github.event_name == 'workflow_call' && inputs.ref || github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: stajichlab/phyling
+
+jobs:
+  build-and-push:
+    name: Build and push container image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # Compute version tags ourselves rather than relying on metadata-action's
+      # ref auto-detection: for a workflow_call, github.ref is the *caller's*
+      # ref (e.g. the branch that ran publish_release.yml), not the tag we
+      # were asked to build, so semver-from-ref would silently produce nothing.
+      - name: Resolve ref and push decision
+        id: resolve
+        run: |
+          case "${{ github.event_name }}" in
+            workflow_call)
+              REF_NAME="${{ inputs.ref }}"
+              PUSH="${{ inputs.push }}"
+              ;;
+            workflow_dispatch)
+              REF_NAME="${{ github.ref }}"
+              PUSH="${{ inputs.push }}"
+              ;;
+            *)
+              REF_NAME="${{ github.ref }}"
+              PUSH="true"
+              ;;
+          esac
+          REF_NAME="${REF_NAME#refs/tags/}"
+          REF_NAME="${REF_NAME#refs/heads/}"
+
+          VERSION=""
+          MAJOR_MINOR=""
+          if [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            VERSION="${REF_NAME#v}"
+            MAJOR_MINOR=$(echo "$VERSION" | cut -d. -f1,2)
+          fi
+
+          echo "ref=$REF_NAME" >> "$GITHUB_OUTPUT"
+          echo "push=$PUSH" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "major_minor=$MAJOR_MINOR" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.resolve.outputs.ref || github.ref }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: steps.resolve.outputs.push == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ steps.resolve.outputs.version }},enable=${{ steps.resolve.outputs.version != '' }}
+            type=raw,value=${{ steps.resolve.outputs.major_minor }},enable=${{ steps.resolve.outputs.major_minor != '' }}
+            type=raw,value=latest,enable=${{ (github.event_name == 'release' && github.event.release.prerelease == false) || (github.event_name == 'workflow_call' && inputs.latest == true) }}
+            type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '' }}
+            type=sha,format=short,prefix=sha-,enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag == '' }}
+
+      # Build once and load it locally so the smoke test runs against the
+      # exact image before it is ever pushed to the registry.
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test image
+        run: |
+          docker run --rm ${{ fromJson(steps.meta.outputs.json).tags[0] }} --help
+
+      - name: Push image
+        if: steps.resolve.outputs.push == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha

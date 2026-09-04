@@ -1,0 +1,13 @@
+.github
+.pixi
+tests
+example
+misc
+*.md
+!README.md
+dist
+build
+*.egg-info
+__pycache__
+.pytest_cache
+.ruff_cache
