@@ -4,7 +4,7 @@
 [![codecov](https://codecov.io/gh/stajichlab/Phyling/graph/badge.svg?token=ZH5GBQYKZ6)](https://codecov.io/gh/stajichlab/Phyling)
 [![License](https://img.shields.io/github/license/stajichlab/Phyling?label=license)](https://github.com/stajichlab/Phyling/blob/main/LICENSE)
 [![Conda](https://anaconda.org/bioconda/phyling/badges/version.svg)](https://anaconda.org/bioconda/phyling)
-[![Container](https://ghcr-badge.egpl.dev/stajichlab/phyling/latest_tag?trim=major&label=image)](https://github.com/stajichlab/Phyling/pkgs/container/phyling/versions?filters%5Bversion_type%5D=tagged)
+[![Container](https://ghcr-badge.egpl.dev/stajichlab/phyling/latest_tag?trim=major&label=Image)](https://github.com/stajichlab/Phyling/pkgs/container/phyling)
 [![DOI](https://img.shields.io/badge/DOI-10.1093/g3journal/jkag062-blue)](https://doi.org/10.1093/g3journal/jkag062)
 
 # Phyling
