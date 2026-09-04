@@ -272,3 +272,17 @@ jobs:
           prerelease: ${{ github.event.inputs.bump_type == 'prerelease' }}
           make_latest: ${{ github.event.inputs.bump_type != 'prerelease' }}
           files: dist/*.tar.gz
+
+  build-container:
+    name: Build and publish container image
+    needs:
+      - prepare-release
+      - publish-release
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/container.yml
+    with:
+      ref: v${{ needs.prepare-release.outputs.version }}
+      push: true
+      latest: ${{ github.event.inputs.bump_type != 'prerelease' }}
