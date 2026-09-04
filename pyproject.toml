@@ -15,7 +15,7 @@ maintainers = [
 license = { file = "LICENSE" }
 description = "A lightweight phylogenetic tree builder from annotated genomes."
 readme = "README.md"
-requires-python = ">=3.9,<3.15"
+requires-python = ">=3.10,<3.15"
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "License :: OSI Approved :: MIT License",
@@ -23,7 +23,6 @@ classifiers = [
   "Intended Audience :: Science/Research",
   "Topic :: Scientific/Engineering :: Bio-Informatics",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
@@ -120,7 +119,7 @@ channels = ["conda-forge", "bioconda"]
 platforms = ["linux-64", "osx-64", "osx-arm64"]
 
 [tool.pixi.dependencies]
-python = ">=3.9,<3.15"
+python = ">=3.10,<3.15"
 
 [tool.pixi.feature.prod.pypi-dependencies]
 phyling = { path = ".", editable = false }
