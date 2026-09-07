@@ -31,7 +31,7 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "biopython>=1.81",
+  "biopython>=1.88",
   "clipkit>=2.1.1",
   "matplotlib>=3.5.3",
   "numpy>=2.0.2,<3.0.0",
