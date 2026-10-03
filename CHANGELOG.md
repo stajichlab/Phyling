@@ -7,6 +7,10 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Container image now includes `ps` (conda-forge `procps-ng`), which Nextflow needs to collect task metrics. The build checks for it.
+
 ## [2.4.1] - 2026-09-03
 
 ### Added
