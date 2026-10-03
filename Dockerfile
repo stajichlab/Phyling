@@ -13,8 +13,9 @@ COPY --chown=$MAMBA_USER:$MAMBA_USER . .
 USER $MAMBA_USER
 
 # Runtime environment: python, pip/git (needed to install and version phyling
-# from this checkout), and the external phylogenetics binaries phyling shells
-# out to for alignment and tree inference.
+# from this checkout), the external phylogenetics binaries phyling shells
+# out to for alignment and tree inference, and procps-ng (provides `ps`, which
+# Nextflow runs inside the container to collect task metrics).
 RUN micromamba install -y -n base -c conda-forge -c bioconda \
         python=3.13 \
         pip \
@@ -23,6 +24,7 @@ RUN micromamba install -y -n base -c conda-forge -c bioconda \
         "fasttree>=2.1.1" \
         "iqtree>=3.1.2" \
         muscle \
+        "procps-ng" \
         raxml \
         "raxml-ng>=2.0.2" \
     && micromamba clean --all --yes
@@ -40,6 +42,7 @@ RUN set -eux; \
     command -v astral; \
     command -v FastTree; \
     command -v muscle; \
+    command -v ps; \
     command -v raxml-ng; \
     command -v iqtree || command -v iqtree2; \
     phyling --help
