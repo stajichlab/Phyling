@@ -116,7 +116,7 @@ jobs:
       # Build once and load it locally so the smoke test runs against the
       # exact image before it is ever pushed to the registry.
       - name: Build image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
@@ -132,7 +132,7 @@ jobs:
 
       - name: Push image
         if: steps.resolve.outputs.push == 'true'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
