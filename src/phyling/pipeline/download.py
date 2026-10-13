@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import shutil
 from urllib.error import URLError
 
@@ -10,6 +11,8 @@ from ..lib._utils import Timer
 from ..lib.download import BuscoParser
 
 __all__ = ["download"]
+
+logger = logging.getLogger(__name__)
 
 
 @Timer.timer
@@ -21,7 +24,10 @@ def download(markerset: str, **kwargs) -> None:
             markerset_list = metadata.online + metadata.local
             if markerset == "list":
                 width, _ = shutil.get_terminal_size((80, 24))
-                col = width // 40
+                if not markerset_list:
+                    logger.warning("No markersets available online or on local.")
+                    return
+                col = max(width // 40, 1)
                 markerset_list = [markerset_list[x : x + col] for x in range(0, len(markerset_list), col)]
                 col_width = max(len(word) for row in markerset_list for word in row) + 3  # padding
 

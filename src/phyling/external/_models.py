@@ -414,8 +414,16 @@ class NexusHandler(CustomHandler):
             line = blocklines.pop(0)
             line = line.lstrip("\n")
             if line.startswith("charset"):
-                part_name, content = line[7:].replace(" ", "").split("=")
-                start, end = [int(i) for i in content.split(",")[-1].split("-")]
+                part_name, content = (x.strip() for x in line[7:].split("=", 1))
+                content = content.split(":", 1)[-1]  # Drop an optional "alignment_file:" prefix
+                ranges = content.replace(",", " ").split()
+                match = re.fullmatch(r"(\d+)(?:-(\d+))?", ranges[0]) if len(ranges) == 1 else None
+                if not match:
+                    raise RuntimeError(
+                        f"Charset {part_name} = {content.strip()} is not supported. Only a single continuous range is allowed."
+                    )
+                start = int(match[1])
+                end = int(match[2] or start)
                 partitions[part_name] = PartitionRecord(name=part_name, start=start, end=end)
             if line.startswith("charpartition"):
                 _, content = line[13:].replace(" ", "").split("=")

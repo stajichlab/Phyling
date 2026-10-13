@@ -140,3 +140,10 @@ class TestFilter:
 
         call_kwargs = mock_filter_precheck["mfa2treelist"].build.call_args.kwargs
         assert call_kwargs.get("noml") is False
+
+
+class TestInputCheck:
+    def test_accepts_str_directory(self, path_pep_msa: list[Path]):
+        """A str path is treated as one path, not split into characters."""
+        result = filter_mod._input_check(str(path_pep_msa[0].parent), 2)
+        assert set(result) == set(path_pep_msa[0].parent.glob("*.mfa"))

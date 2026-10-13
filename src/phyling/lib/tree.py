@@ -22,12 +22,11 @@ from Bio import AlignIO, Phylo, SeqIO
 from Bio.Align import MultipleSeqAlignment
 from Bio.Phylo.BaseTree import Tree
 from Bio.Seq import Seq
-from Bio.SeqIO import FastaIO
 from Bio.SeqRecord import SeqRecord
 
 from .. import AVAIL_CPUS
 from . import SeqTypes, TreeMethods, TreeOutputFiles, _abc
-from ._utils import CheckAttrs, Timer, guess_seqtype, is_gzip_file
+from ._utils import CheckAttrs, Timer, guess_file_seqtype, is_gzip_file
 
 __all__ = ["MFA2Tree", "MFA2TreeList"]
 logger = logging.getLogger(__name__)
@@ -213,7 +212,8 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
 
         Assign the sequence type and its name after the MSA being loaded.
         """
-        self._data = AlignIO.read(self.file, format="fasta")
+        with gzip.open(self.file, "rt") if is_gzip_file(self.file) else open(self.file) as f:
+            self._data = AlignIO.read(f, format="fasta")
         self._data.annotations["seqtype"] = self.seqtype
         self._data.annotations["seqname"] = self.name
 
@@ -457,16 +457,9 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
 
         self._saturation = Saturation().compute_saturation(self._data, self.tree)
 
-    def _guess_seqtype(self) -> Literal["dna", "pep", "rna", "NaN"]:
+    def _guess_seqtype(self) -> Literal["dna", "pep"]:
         """Guess and return the sequence type."""
-        f = gzip.open(self.file, "rt") if is_gzip_file(self.file) else open(self.file)
-
-        for r in FastaIO.SimpleFastaParser(f):
-            seqtype = guess_seqtype(r[1], ignore_failed=True)
-            if seqtype:
-                break
-        f.close()
-        return seqtype
+        return guess_file_seqtype(self.file)
 
 
 class MFA2TreeList(_abc.SeqDataListABC[MFA2Tree]):

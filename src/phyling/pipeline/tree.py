@@ -44,6 +44,10 @@ def tree(
     partition = _validate_partition(partition, method, concat)
 
     output = Path(output)
+    # Fail before the (possibly hours long) inference rather than when writing the final outputs
+    for existing in (output / TreeOutputFiles.TREE_NW, output / TreeOutputFiles.TREE_IMG if figure else None):
+        if existing and (existing.exists() or existing.is_symlink()):
+            raise FileExistsError(f"{existing} already exists. Please remove it or choose another output folder.")
     output.mkdir(exist_ok=True)
 
     if concat:
@@ -108,7 +112,7 @@ def tree(
 
 def _input_check(inputs: str | Path | Sequence[str | Path]) -> tuple[Path, ...]:
     """Check and adjust the arguments passed in."""
-    if isinstance(inputs, Sequence):
+    if isinstance(inputs, Sequence) and not isinstance(inputs, str):
         inputs_tuple = tuple(Path(file) for file in inputs)
         input_dir = {file.parent for file in inputs_tuple}
         if len(input_dir) > 1:

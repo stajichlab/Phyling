@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import logging
 import sys
 from argparse import Namespace
 from pathlib import Path
@@ -171,6 +172,43 @@ class TestMain:
 
         result = main(args)
         assert result == 1
+
+    def test_log_captures_pipeline_records(self, args_factory, tmp_path: Path):
+        """Records from phyling.pipeline.* and phyling.lib.* are written to the log file."""
+        output = tmp_path / "out"
+
+        def func(**kwargs):
+            output.mkdir()
+            logging.getLogger("phyling.pipeline.fake").warning("from pipeline")
+
+        main(args_factory(output=output, func=func))
+
+        assert "from pipeline" in (output / "log.txt").read_text()
+
+    def test_log_written_outside_existing_output_during_run(self, args_factory, tmp_path: Path):
+        """The log file does not appear in the output folder while the module runs."""
+        output = tmp_path / "out"
+        output.mkdir()
+        seen = {}
+
+        def func(**kwargs):
+            seen["files"] = list(output.iterdir())
+
+        main(args_factory(output=output, func=func))
+
+        assert seen["files"] == []
+        assert (output / "log.txt").exists()
+
+    def test_failed_run_keeps_log_outside_output(self, args_factory, tmp_path: Path):
+        output = tmp_path / "out"
+
+        def func(**kwargs):
+            output.mkdir()
+            raise RuntimeError("boom")
+
+        assert main(args_factory(output=output, func=func)) == 1
+        assert list(output.iterdir()) == []
+        assert "boom" in (tmp_path / "out.log").read_text()
 
 
 class TestMainMenu:

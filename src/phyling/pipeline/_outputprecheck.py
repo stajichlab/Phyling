@@ -187,7 +187,8 @@ class AlignPrecheck(OutputPrecheckABC):
         if not isinstance(data, SampleList):
             raise TypeError(f"Argument samplelist only accepts {SampleList.__qualname__}. Got {type(data)}.")
         self.data: SampleList = data
-        self.params.update(**params)
+        # Copy the class-level defaults so parameters do not leak between instances
+        self.params = {**type(self).params, **params}
 
     def precheck(self, *, force_rerun: bool = False) -> tuple[SampleList, SearchHitsManager]:
         """Check the output folder and decide rerun actions for orthologs and samples.
@@ -332,7 +333,8 @@ class FilterPrecheck(OutputPrecheckABC):
         if not isinstance(data, MFA2TreeList):
             raise TypeError(f"Argument mfa2treelist only accepts {MFA2TreeList.__qualname__}. Got {type(data)}.")
         self.data: MFA2TreeList = data
-        self.params.update(**params)
+        # Copy the class-level defaults so parameters do not leak between instances
+        self.params = {**type(self).params, **params}
 
     def precheck(self, *, force_rerun: bool = False) -> tuple[MFA2TreeList, MFA2TreeList]:
         """Check the output folder and determine files and trees to rerun.
@@ -410,7 +412,8 @@ class FilterPrecheck(OutputPrecheckABC):
         if prev_data.seqtype != self.data.seqtype:
             raise SystemExit("Seqtype is changed. Aborted.")
         diff_params = {param[0] for param in set(self.params.items()) ^ set(prev_params.items())}
-        if not diff_params and len(list(self.output.iterdir())) > 1:
+        diff_inputs = {msa.checksum for msa in self.data} ^ {msa.checksum for msa in prev_data}
+        if not (diff_params or diff_inputs) and len(list(self.output.iterdir())) > 1:
             raise SystemExit("Files not changed and parameters are identical to the previous run. Aborted.")
 
         completed_mfa2treelist = MFA2TreeList()

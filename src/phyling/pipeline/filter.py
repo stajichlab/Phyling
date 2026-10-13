@@ -96,7 +96,7 @@ def filter(
 
 def _input_check(inputs: str | Path | Sequence[str | Path], top_n_toverr: int) -> tuple[Path, ...]:
     """Check and adjust the arguments passed in."""
-    if isinstance(inputs, Sequence):
+    if isinstance(inputs, Sequence) and not isinstance(inputs, str):
         inputs_tuple = tuple(Path(file) for file in inputs)
         input_dir = {file.parent for file in inputs_tuple}
         if len(input_dir) > 1:

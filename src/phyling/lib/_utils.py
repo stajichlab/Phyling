@@ -5,6 +5,7 @@ These are not part of the public API and may change without notice.
 
 from __future__ import annotations
 
+import gzip
 import logging
 import os
 import re
@@ -27,6 +28,7 @@ from Bio import AlignIO
 from Bio.Align import MultipleSeqAlignment
 from Bio.Data.CodonTable import NCBICodonTable, NCBICodonTableDNA, NCBICodonTableRNA
 from Bio.Seq import Seq
+from Bio.SeqIO import FastaIO
 
 from .. import AVAIL_CPUS
 from ..exception import BinaryNotFoundError, SeqtypeError
@@ -113,6 +115,27 @@ def guess_seqtype(seq: str, ignore_failed: bool = False) -> Literal["dna", "pep"
         if ignore_failed:
             return "NaN"
         raise SeqtypeError("Cannot determine seqtype. Aborted.")
+
+
+def guess_file_seqtype(file: str | Path) -> Literal["dna", "pep"]:
+    """Guess the sequence type of a (gzipped) fasta file from its first recognizable record.
+
+    Raises:
+        SeqtypeError: If the file is empty, no record can be recognized, or the sequences are RNA.
+    """
+    seqtype = None
+    with gzip.open(file, "rt") if is_gzip_file(file) else open(file) as f:
+        for _, seq in FastaIO.SimpleFastaParser(f):
+            seqtype = guess_seqtype(seq, ignore_failed=True)
+            if seqtype in (SeqTypes.DNA, SeqTypes.PEP, SeqTypes.RNA):
+                break
+    if seqtype is None:
+        raise SeqtypeError(f"No sequences found in {file}.")
+    if seqtype == "NaN":
+        raise SeqtypeError(f"Cannot determine seqtype of {file}.")
+    if seqtype == SeqTypes.RNA:
+        raise SeqtypeError(f"Invalid seqtype: {seqtype} determined from {file}")
+    return seqtype
 
 
 def remove_files(*files: Path) -> None:

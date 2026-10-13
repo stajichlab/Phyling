@@ -66,10 +66,14 @@ class TestArgsCheck:
         with pytest.raises(ValueError, match="Invalid method"):
             _args_check(path_pep_fasta, "poxviridae_odb10", 1e-10, "invalid")
 
+    # ---------------------------------------------------------------------------
+    # _search_threads_check
+    # ---------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# _search_threads_check
-# ---------------------------------------------------------------------------
+    def test_str_directory_input(self, path_pep_fasta_dir: Path, path_hmm_dir: Path):
+        """A str path is treated as one path, not split into characters."""
+        inputs_out, *_ = _args_check(str(path_pep_fasta_dir), path_hmm_dir, 1e-10, "hmmalign")
+        assert set(inputs_out) == set(path_pep_fasta_dir.iterdir())
 
 
 class TestSearchThreadsCheck:

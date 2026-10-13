@@ -70,10 +70,18 @@ class TestDownload:
         with pytest.raises(URLError):
             download("list")
 
+    # ---------------------------------------------------------------------------
+    # _wrapper
+    # ---------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# _wrapper
-# ---------------------------------------------------------------------------
+    def test_list_option_nothing_available(self, mock_busco_parser, monkeypatch: pytest.MonkeyPatch):
+        mock_busco_parser.online = []
+        mock_wrap = MagicMock()
+        monkeypatch.setattr(download_mod, "_wrapper", mock_wrap)
+
+        download("list")
+
+        mock_wrap.assert_not_called()
 
 
 class TestWrapper:

@@ -111,7 +111,7 @@ class BuscoParser(ContextDecorator):
                 continue
             with open(metadata_file) as f:
                 for line in csv.reader(f, delimiter="\t"):
-                    if line[0].startswith("#"):
+                    if not line or line[0].startswith("#"):
                         continue
                     if (cfg_dir / line[0]).is_dir():
                         self._local_metadata[line[0]] = {"path": cfg_dir, "md5": line[1]}

@@ -165,7 +165,7 @@ class TestTree:
     def test_validate_partition_invalid_type(self):
         """_validate_partition raises ValueError when partition is not bool."""
         with pytest.raises(ValueError, match="boolean value"):
-            _validate_partition("yes", "RAXML", True)   # pyrefly: ignore [bad-argument-type]
+            _validate_partition("yes", "RAXML", True)  # pyrefly: ignore [bad-argument-type]
 
     def test_validate_partition_ft_raises(self):
         """_validate_partition raises ValueError when method is FT with partition."""
@@ -194,3 +194,18 @@ class TestTree:
         result = _input_check(path_pep_msa)
         assert isinstance(result, tuple)
         assert len(result) == len(path_pep_msa)
+
+    def test_input_check_accepts_str_directory(self, path_pep_msa: list[Path]):
+        """A str path is treated as one path, not split into characters."""
+        result = _input_check(str(path_pep_msa[0].parent))
+        assert set(result) == set(path_pep_msa[0].parent.glob("*.mfa"))
+
+    def test_tree_fails_early_when_tree_exists(self, path_pep_msa: list[Path], tmp_path, monkeypatch):
+        """An existing tree.nwk is reported before any tree is built."""
+        (tmp_path / TreeOutputFiles.TREE_NW).write_text("(a,b);\n")
+        build = MagicMock()
+        monkeypatch.setattr(MFA2TreeList, "build", build)
+
+        with pytest.raises(FileExistsError, match="already exists"):
+            tree(path_pep_msa, tmp_path)
+        build.assert_not_called()

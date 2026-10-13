@@ -26,6 +26,7 @@ def main(args: Args) -> int:
     logger.debug("Debug mode enabled.")
     logger.debug(vars(args))
     file_handler = None
+    succeeded = False
 
     try:
         output_path = getattr(args, "output", None)
@@ -33,11 +34,14 @@ def main(args: Args) -> int:
             output_path = Path(output_path)
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
-            log_file = output_path.with_suffix(".log") if not output_path.is_dir() else output_path / "log.txt"
+            # Write the log next to the output folder during the run so it neither makes the folder look non-empty to the
+            # output precheck nor gets removed by the rerun cleanup. It is moved into the folder once the run succeeds.
+            log_file = output_path.parent / f"{output_path.name}.log"
 
             file_handler = logging.FileHandler(log_file, mode="w", delay=True)
             file_handler.setFormatter(logging.Formatter(LOG_FORMAT))
-            logger.addHandler(file_handler)
+            # Attach to the package logger so records from phyling.pipeline.* and phyling.lib.* are captured too
+            logging.getLogger("phyling").addHandler(file_handler)
             logger.debug("Log file initialized.")
 
         try:
@@ -57,13 +61,16 @@ def main(args: Args) -> int:
             logger.debug("Traceback details:", exc_info=True)
             return 1
 
+        succeeded = True
+
     finally:
         if file_handler:
-            logger.removeHandler(file_handler)
+            logging.getLogger("phyling").removeHandler(file_handler)
             file_handler.close()
             source_log = Path(file_handler.baseFilename)
-            if source_log.exists() and Path(args.output).is_dir():
-                source_log.rename(args.output / "log.txt")
+            # Keep a failed run's log outside the output folder so it does not block the next attempt
+            if succeeded and source_log.exists() and Path(args.output).is_dir():
+                source_log.replace(Path(args.output) / "log.txt")
 
     return 0
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import random
 import re
 from pathlib import Path
@@ -14,6 +15,7 @@ from Bio.Phylo.BaseTree import Tree
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
+from phyling.exception import SeqtypeError
 from phyling.lib.tree import MFA2Tree, MFA2TreeList, bootstrap, branch_concordance, fill_missing_taxon
 
 
@@ -291,6 +293,36 @@ class TestMFA2Tree:
         real_mfa2tree._saturation = None
         with pytest.raises(AttributeError):
             _ = real_mfa2tree.saturation
+
+
+class TestMFA2TreeSeqtypeAndLoad:
+    def test_unrecognized_seqtype_raises(self, tmp_path: Path):
+        msa = tmp_path / "bad.mfa"
+        msa.write_text(">a\n12345\n>b\n12345\n")
+        with pytest.raises(SeqtypeError, match="Cannot determine seqtype"):
+            MFA2Tree(msa)
+
+    def test_rna_seqtype_raises(self, tmp_path: Path):
+        msa = tmp_path / "rna.mfa"
+        msa.write_text(">a\nACGU\n>b\nACGU\n")
+        with pytest.raises(SeqtypeError, match="Invalid seqtype"):
+            MFA2Tree(msa)
+
+    def test_empty_file_raises(self, tmp_path: Path):
+        msa = tmp_path / "empty.mfa"
+        msa.write_text("")
+        with pytest.raises(SeqtypeError, match="No sequences found"):
+            MFA2Tree(msa)
+
+    def test_load_gzipped_msa(self, path_pep_msa: list[Path], tmp_path: Path):
+        gz_msa = tmp_path / "aln.mfa.gz"
+        with gzip.open(gz_msa, "wb") as f:
+            f.write(path_pep_msa[0].read_bytes())
+        obj = MFA2Tree(gz_msa)
+
+        obj.load()
+
+        assert len(obj._data) > 0
 
 
 class TestMFA2TreeBuild:

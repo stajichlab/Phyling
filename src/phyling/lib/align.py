@@ -34,7 +34,7 @@ from pyhmmer.plan7 import HMM, HMMFile
 from ..exception import EmptyWarning, SeqtypeError
 from ..external import Muscle
 from . import SeqTypes, _abc
-from ._utils import guess_seqtype, is_gzip_file, load_msa
+from ._utils import guess_file_seqtype, is_gzip_file, load_msa
 
 __all__ = [
     "SampleSeqs",
@@ -165,7 +165,7 @@ class HMMMarkerSet(_abc.DataListABC[HMM]):  # type: ignore[type-var]
                 raise FileNotFoundError(f"{cutoff_file} is not a file.")
             with open(cutoff_file) as f:
                 for line in csv.reader(f, delimiter="\t"):
-                    if line[0].startswith("#"):
+                    if not line or line[0].startswith("#"):
                         continue
                     cutoffs_dict[line[0]] = float(line[1])
         else:
@@ -276,18 +276,7 @@ class SampleSeqs(_abc.SeqFileWrapperABC):
 
     def _guess_seqtype(self) -> Literal["dna", "pep"]:
         """Guess and return the sequence type."""
-        f = gzip.open(self.file, "rt") if is_gzip_file(self.file) else open(self.file)
-
-        for r in SeqIO.FastaIO.SimpleFastaParser(f):
-            seqtype = guess_seqtype(r[1], ignore_failed=True)
-            if seqtype in (SeqTypes.DNA, SeqTypes.PEP, SeqTypes.RNA):
-                break
-        f.close()
-        if seqtype == "NaN":
-            raise SeqtypeError(f"Cannot determine seqtype of {self.file}.")
-        if seqtype == SeqTypes.RNA:
-            raise SeqtypeError(f"Invalid seqtype: {seqtype} determined from {self.file}")
-        return seqtype
+        return guess_file_seqtype(self.file)
 
     def _process_pep_seqs(self, seqblock: DigitalSequenceBlock[AA]) -> None:
         """Process the peptide sequences."""

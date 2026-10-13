@@ -162,6 +162,12 @@ class TestBuscoParserInit:
         assert bp.online == []
         bp.close()
 
+    def test_local_metadata_skips_blank_lines(self, tmp_path: Path, mock_fetch):
+        (tmp_path / "poxviridae_odb10").mkdir()
+        (tmp_path / download_mod.METADATA_FILE).write_text("poxviridae_odb10\tabc\n\n")
+        with BuscoParser(tmp_path) as bp:
+            assert [name.replace(" [Outdated]", "") for name in bp.local] == ["poxviridae_odb10"]
+
 
 class TestBuscoParserProperties:
     def test_online_returns_sorted_list(self, cfg_dir: Path, mock_fetch):

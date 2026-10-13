@@ -122,7 +122,7 @@ def _args_check(
     method: str,
 ) -> tuple[tuple[Path, ...], Path, float, str]:
     """Check and adjust the arguments passed in."""
-    if isinstance(inputs, Sequence):
+    if isinstance(inputs, Sequence) and not isinstance(inputs, str):
         inputs_tuple = tuple(Path(sample) for sample in inputs)
     else:
         inputs = Path(inputs)

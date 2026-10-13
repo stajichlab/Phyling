@@ -191,6 +191,15 @@ class TestHMMMarkerSet:
             # Passing an integer instead of path or dict
             marker_set.set_cutoffs([1, 2, 3])  # type: ignore
 
+    def test_set_cutoffs_skips_blank_lines(self, path_hmm_file: Path, tmp_path: Path):
+        cutoff_file = tmp_path / "scores_cutoff"
+        cutoff_file.write_text("# comment\n\n10at10240\t450.0\n\n")
+        marker_set = HMMMarkerSet(data=path_hmm_file)
+
+        marker_set.set_cutoffs(cutoff_file)
+
+        assert marker_set["10at10240"].cutoffs.trusted == (450.0, 450.0)
+
 
 # ---------------------------------------------------------------------------
 # TestSampleSeqs
