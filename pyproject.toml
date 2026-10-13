@@ -15,7 +15,7 @@ maintainers = [
 license = { file = "LICENSE" }
 description = "A lightweight phylogenetic tree builder from annotated genomes."
 readme = "README.md"
-requires-python = ">=3.10,<3.15"
+requires-python = ">=3.10"
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "License :: OSI Approved :: MIT License",
@@ -38,7 +38,7 @@ dependencies = [
   "phykit>=2.4.1",
   "pyfaidx>=0.9.0.3",
   "pyhmmer>=0.12.0",
-  "typing-extensions; python_version < '3.10'",
+  "typing-extensions; python_version < '3.11'",
 ]
 dynamic = ["version"]
 
@@ -83,19 +83,12 @@ omit = [
   "**/__init__.py",
   "**/_[^_]*.py",
   "tests/*.py",
-  "exception.py",
+  "**/exception.py",
   "*.egg-info/**",
 ]
 
 [tool.coverage.report]
-omit = [
-  "**/__init__.py",
-  "**/_[^_]*.py",
-  "tests/*.py",
-  "exception.py",
-]
-exclude_lines = [
-  "pragma: no cover",
+exclude_also = [
   "def _\\w+\\(",
   "async def _\\w+\\(",
 ]
@@ -130,7 +123,7 @@ phyling = { path = ".", editable = true, extras = ["dev"] }
 [tool.pixi.feature.dev.dependencies]
 ruff = "*"
 
-[tool.pixi.tasks]
+[tool.pixi.feature.dev.tasks]
 test = "pytest"
 
 [tool.pixi.environments]
