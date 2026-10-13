@@ -50,7 +50,7 @@ class TestRunCli:
         out2 = capsys.readouterr().out
 
         assert excinfo.value.code == 0
-        assert out1.strip() == out2.strip() == phyling.VERSION
+        assert out1.strip() == out2.strip() == phyling.__version__
 
     def test_help(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture):
         # Force main to return exit code 0

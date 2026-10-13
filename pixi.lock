@@ -683,7 +683,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/ruff?source=compressed-mapping
+  - pkg:pypi/ruff?source=hash-mapping
   run_exports: {}
   size: 8955205
   timestamp: 1787865273472
@@ -945,7 +945,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/ruff?source=compressed-mapping
+  - pkg:pypi/ruff?source=hash-mapping
   run_exports: {}
   size: 8837779
   timestamp: 1787865588580
@@ -1173,7 +1173,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/ruff?source=compressed-mapping
+  - pkg:pypi/ruff?source=hash-mapping
   run_exports: {}
   size: 8177581
   timestamp: 1787865392183
@@ -1203,7 +1203,7 @@ packages:
   - typing-extensions ; python_full_version < '3.10'
   - pre-commit>=3.4.0 ; extra == 'dev'
   - pytest-cov>=5.0.0 ; extra == 'dev'
-  - pytest>=8.0.0 ; extra == 'dev'
+  - pytest>=9.1.1 ; extra == 'dev'
   requires_python: '>=3.10,<3.15'
 - pypi: https://files.pythonhosted.org/packages/02/08/9c41fb51ab5b43eb21674aff13df270e8ba6c4b29c8624e328dc7a9482af/distlib-0.4.3-py2.py3-none-any.whl
   name: distlib

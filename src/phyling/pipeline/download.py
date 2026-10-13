@@ -15,6 +15,7 @@ __all__ = ["download"]
 @Timer.timer
 def download(markerset: str, **kwargs) -> None:
     """A pipeline that list the available BUSCO HMM markerset and download it when specifying."""
+    CFG_DIRS[0].mkdir(parents=True, exist_ok=True)
     try:
         with BuscoParser(*CFG_DIRS) as metadata:
             markerset_list = metadata.online + metadata.local

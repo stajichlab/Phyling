@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Callable, Protocol, cast
 
-from . import AUTHOR, AVAIL_CPUS, VERSION
+from . import AVAIL_CPUS, __author__, __version__
 from . import __name__ as _module_name
 from .lib import ALIGN_METHODS, TreeMethods
 from .pipeline.align import align
@@ -86,7 +86,7 @@ def main_menu(argv=None) -> Args:
         orthologs found across samples. The filter module calculates treeness/RCV scores to filter out the uninformative alignment
         results. The tree module help to build a phylogenetic tree by different algorithms.
         """,
-        epilog=f"Written by {AUTHOR}",
+        epilog=f"Written by {__author__}",
         add_help=False,
     )
 
@@ -109,7 +109,7 @@ def main_menu(argv=None) -> Args:
     # Global options
     opt_args = parser.add_argument_group("Options")
     opt_args.add_argument("-h", "--help", action="help", help="show this help message and exit")
-    opt_args.add_argument("-V", "--version", action="version", version=VERSION)
+    opt_args.add_argument("-V", "--version", action="version", version=__version__)
 
     parsed_args = parser.parse_args(argv)
     if not hasattr(parsed_args, "func"):

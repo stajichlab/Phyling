@@ -2,27 +2,26 @@
 
 import logging
 import os
-from importlib.metadata import metadata
+from importlib.metadata import PackageNotFoundError, metadata
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
 
-VERSION = metadata("phyling")["Version"]
-AUTHOR = metadata("phyling")["Author-email"]
+try:
+    _meta = metadata("phyling")
+    __version__ = _meta["Version"]
+    __author__ = _meta["Author-email"]
+except PackageNotFoundError:  # running from an uninstalled source tree
+    __version__ = "0+unknown"
+    __author__ = ""
 
-# Create config folder in $HOME/.phyling
-CFG_DIRS: list[Path] = []
-phyling_db_loc = os.getenv("PHYLING_DB")
-if phyling_db_loc:
-    CFG_DIRS.extend([Path(path) for path in phyling_db_loc.split(":")])
-if CFG_DIRS and os.access(CFG_DIRS[0], os.W_OK):
-    pass
-else:
-    cfg_dir = Path.home() / ".phyling"
-    cfg_dir.mkdir(exist_ok=True)
-    CFG_DIRS.insert(0, cfg_dir)
+# Config folders from $PHYLING_DB; fall back to $HOME/.phyling when the first one is not writable.
+# The folder is created lazily by the download pipeline.
+CFG_DIRS: list[Path] = [Path(p) for p in os.getenv("PHYLING_DB", "").split(":") if p]
+if not (CFG_DIRS and os.access(CFG_DIRS[0], os.W_OK)):
+    CFG_DIRS.insert(0, Path.home() / ".phyling")
 
 # Available CPUs
 AVAIL_CPUS = int(os.environ.get("SLURM_CPUS_ON_NODE") or os.cpu_count() or 1)
