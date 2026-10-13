@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling", "versioningit"]
+requires = ["hatchling>=1.27", "versioningit"]
 build-backend = "hatchling.build"
 
 [project]
@@ -12,13 +12,13 @@ maintainers = [
   { name = "Jason Stajich", email = "jasonstajich.phd@gmail.com" },
   { name = "Cheng-Hung Tsai", email = "chenghung.tsai@email.ucr.edu" },
 ]
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 description = "A lightweight phylogenetic tree builder from annotated genomes."
 readme = "README.md"
 requires-python = ">=3.10"
 classifiers = [
   "Development Status :: 5 - Production/Stable",
-  "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent",
   "Intended Audience :: Science/Research",
   "Topic :: Scientific/Engineering :: Bio-Informatics",
@@ -105,7 +105,15 @@ line-length = 130
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
-ignore = ["E203", "E402", "E701"]
+ignore = ["E203", "E701"]
+
+[tool.ruff.lint.per-file-ignores]
+# Warning filters must be installed before importing numpy-dependent modules
+"src/phyling/external/_iqtree.py" = ["E402"]
+"src/phyling/external/_libphykit.py" = ["E402"]
+"src/phyling/external/_models.py" = ["E402"]
+# PHYLING_DB must be set before phyling is imported
+"tests/conftest.py" = ["E402"]
 
 [tool.pixi.workspace]
 channels = ["conda-forge", "bioconda"]
