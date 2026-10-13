@@ -6,7 +6,7 @@ import logging
 import shutil
 from urllib.error import URLError
 
-from .. import CFG_DIRS
+from .. import CFG_DIRS, LEGACY_CFG_DIR, warn_legacy_cfg_dir
 from ..lib._utils import Timer
 from ..lib.download import BuscoParser
 
@@ -21,6 +21,9 @@ def download(markerset: str = "list", **kwargs) -> None:
     CFG_DIRS[0].mkdir(parents=True, exist_ok=True)
     try:
         with BuscoParser(*CFG_DIRS) as metadata:
+            legacy_markersets = sorted(name for name, path in metadata.local_dirs.items() if path == LEGACY_CFG_DIR)
+            if legacy_markersets:
+                warn_legacy_cfg_dir(*legacy_markersets)
             markerset_list = metadata.online + metadata.local
             if markerset == "list":
                 width, _ = shutil.get_terminal_size((80, 24))

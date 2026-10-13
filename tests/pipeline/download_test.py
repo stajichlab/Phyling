@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -16,6 +17,7 @@ def mock_busco_parser(monkeypatch: pytest.MonkeyPatch):
     mock_metadata.online = ["fungi_odb10", "bacteria_odb10", "poxviridae_odb10"]
     mock_metadata.local = []
     mock_metadata.online_error = None
+    mock_metadata.local_dirs = {}
     mock_metadata.__enter__ = MagicMock(return_value=mock_metadata)
     mock_metadata.__exit__ = MagicMock(return_value=False)
 
@@ -97,6 +99,29 @@ class TestDownload:
         download("list")
 
         mock_wrap.assert_not_called()
+
+    def test_list_warns_only_for_legacy_markersets(
+        self, mock_busco_parser, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ):
+        mock_busco_parser.local = ["fungi_odb10", "poxviridae_odb10"]
+        mock_busco_parser.local_dirs = {"fungi_odb10": Path("/new/cache"), "poxviridae_odb10": download_mod.LEGACY_CFG_DIR}
+        monkeypatch.setattr(download_mod, "_wrapper", MagicMock())
+
+        download("list")
+
+        assert "poxviridae_odb10" in caplog.text
+        assert "fungi_odb10" not in caplog.text
+
+    def test_no_warning_without_legacy_markersets(
+        self, mock_busco_parser, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ):
+        mock_busco_parser.local = ["fungi_odb10"]
+        mock_busco_parser.local_dirs = {"fungi_odb10": Path("/new/cache")}
+        monkeypatch.setattr(download_mod, "_wrapper", MagicMock())
+
+        download("list")
+
+        assert "deprecated" not in caplog.text
 
 
 class TestWrapper:

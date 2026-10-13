@@ -12,14 +12,53 @@ import phyling
 from phyling.main import main, run_cli
 
 
+@pytest.fixture
+def reload_phyling(monkeypatch: pytest.MonkeyPatch):
+    """Reload phyling under a patched environment and restore the original module state afterwards."""
+
+    def _reload(home: Path | None = None, phyling_db: str = ""):
+        if home is not None:
+            monkeypatch.setenv("HOME", str(home))
+        monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+        monkeypatch.setenv("PHYLING_DB", phyling_db)
+        return importlib.reload(phyling)
+
+    yield _reload
+    monkeypatch.undo()
+    importlib.reload(phyling)
+
+
 class TestModuleInit:
     def test_cfg_dirs_with_env(self):
         assert phyling.CFG_DIRS[0].resolve().absolute() == Path("tests/database").resolve().absolute()
 
-    def test_cfg_dirs_wo_env(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("PHYLING_DB", "")
-        importlib.reload(phyling)
-        assert phyling.CFG_DIRS[0] == Path.home() / ".phyling"
+    def test_cfg_dirs_wo_env(self, reload_phyling, tmp_path: Path):
+        module = reload_phyling(home=tmp_path)
+        assert module.CFG_DIRS == [tmp_path / ".cache" / "phyling"]
+
+    @pytest.mark.parametrize("xdg, expected", [("/custom/cache", "/custom/cache/phyling"), ("relative/cache", None)])
+    def test_cfg_dirs_follow_xdg_cache_home(
+        self, reload_phyling, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, xdg: str, expected: str | None
+    ):
+        reload_phyling(home=tmp_path)
+        monkeypatch.setenv("XDG_CACHE_HOME", xdg)
+        module = importlib.reload(phyling)
+        # A relative XDG_CACHE_HOME is ignored as the XDG spec requires
+        assert module.CFG_DIRS[0] == (Path(expected) if expected else tmp_path / ".cache" / "phyling")
+
+    def test_legacy_cfg_dir_still_searched(self, reload_phyling, tmp_path: Path):
+        (tmp_path / ".phyling").mkdir()
+        module = reload_phyling(home=tmp_path)
+        assert module.CFG_DIRS == [tmp_path / ".cache" / "phyling", tmp_path / ".phyling"]
+
+    def test_legacy_cfg_dir_warning(self, reload_phyling, tmp_path: Path, caplog: pytest.LogCaptureFixture):
+        module = reload_phyling(home=tmp_path)
+
+        module.warn_legacy_cfg_dir("fungi_odb10", "poxviridae_odb10")
+
+        assert "fungi_odb10, poxviridae_odb10" in caplog.text
+        assert "deprecated" in caplog.text
+        assert str(tmp_path / ".cache" / "phyling") in caplog.text
 
 
 class TestRunCli:

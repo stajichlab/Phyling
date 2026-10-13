@@ -10,7 +10,7 @@ from typing import Literal, Sequence, cast
 
 from Bio import SeqIO
 
-from .. import CFG_DIRS
+from .. import CFG_DIRS, LEGACY_CFG_DIR, warn_legacy_cfg_dir
 from ..exception import EmptyWarning
 from ..external._libclipkit import trim_gaps
 from ..lib import ALIGN_METHODS, FileExts, SeqTypes
@@ -142,9 +142,13 @@ def _args_check(
     if not hmmmarkerset.exists():
         for cfg_dir in CFG_DIRS:
             if Path(cfg_dir, hmmmarkerset).exists():
+                if cfg_dir == LEGACY_CFG_DIR:
+                    warn_legacy_cfg_dir(str(hmmmarkerset))
                 hmmmarkerset = Path(cfg_dir, hmmmarkerset)
                 if hmmmarkerset.name != "hmms" and [f for f in hmmmarkerset.glob("hmms") if f.is_dir()]:
                     hmmmarkerset = hmmmarkerset / "hmms"
+                # Use the first (highest priority) match; later folders would re-match the now absolute path
+                break
     if not hmmmarkerset.exists():
         raise FileNotFoundError(f"Markerset folder does not exist: {hmmmarkerset} - did you download BUSCO?")
 

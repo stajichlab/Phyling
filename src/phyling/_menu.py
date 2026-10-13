@@ -122,11 +122,13 @@ class Download(BaseModule):
     help = "Download HMM markers"
     description = """Help to download/update BUSCO v5 markerset to a local folder.
 
-    First it checks whether the metadata file is exist under the config folder ~/.phyling. A missing or outdated file will trigger
-    the module to download/update the metadata.
+    First it checks whether the metadata file is exist under the config folder $XDG_CACHE_HOME/phyling
+    (~/.cache/phyling by default). A missing or outdated file will
+    trigger the module to download/update the metadata.
 
     Passing "list" to the markerset argument, or omitting it, will list all the available/already downloaded markersets. Passing a
-    valid name to the markerset argument will download the markerset to the config folder ~/.phyling/HMM.
+    valid name to the markerset argument will download the markerset to that config folder.
+    Markersets in the deprecated ~/.phyling folder are still found but support will be removed in a future release.
     """
     func = download
 

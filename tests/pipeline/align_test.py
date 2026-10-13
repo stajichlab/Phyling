@@ -75,6 +75,24 @@ class TestArgsCheck:
         inputs_out, *_ = _args_check(str(path_pep_fasta_dir), path_hmm_dir, 1e-10, "hmmalign")
         assert set(inputs_out) == set(path_pep_fasta_dir.iterdir())
 
+    @pytest.mark.parametrize("in_legacy", [True, False])
+    def test_warns_only_for_legacy_markerset(
+        self,
+        path_pep_fasta: list[Path],
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+        in_legacy: bool,
+    ):
+        new_dir, legacy_dir = tmp_path / "cache", tmp_path / "legacy"
+        (legacy_dir if in_legacy else new_dir).joinpath("fake_odb10", "hmms").mkdir(parents=True)
+        monkeypatch.setattr(align_mod, "CFG_DIRS", [new_dir, legacy_dir])
+        monkeypatch.setattr(align_mod, "LEGACY_CFG_DIR", legacy_dir)
+
+        _args_check(path_pep_fasta, "fake_odb10", 1e-10, "hmmalign")
+
+        assert ("deprecated" in caplog.text) is in_legacy
+
 
 class TestSearchThreadsCheck:
     @pytest.mark.parametrize(

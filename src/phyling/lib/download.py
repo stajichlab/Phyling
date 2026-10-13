@@ -66,6 +66,11 @@ class BuscoParser(ContextDecorator):
             local_markersets.append(display_name)
         return sorted(local_markersets)
 
+    @property
+    def local_dirs(self) -> dict[str, Path]:
+        """Return the config folder each local markerset is stored in."""
+        return {markerset: info["path"] for markerset, info in self._local_metadata.items()}
+
     def close(self) -> None:
         self.__exit__(None, None, None)
 
