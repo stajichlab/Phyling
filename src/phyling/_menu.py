@@ -125,15 +125,21 @@ class Download(BaseModule):
     First it checks whether the metadata file is exist under the config folder ~/.phyling. A missing or outdated file will trigger
     the module to download/update the metadata.
 
-    Passing "list" to markerset argument will list all the available/already downloaded markersets. Passing a valid name to the
-    markerset argument will download the markerset to the config folder ~/.phyling/HMM.
+    Passing "list" to the markerset argument, or omitting it, will list all the available/already downloaded markersets. Passing a
+    valid name to the markerset argument will download the markerset to the config folder ~/.phyling/HMM.
     """
     func = download
 
     @classmethod
     def add_args(cls, parser: argparse.ArgumentParser) -> None:
         """Menu for download module."""
-        parser.add_argument("markerset", metavar='HMM markerset or "list"', help="Name of the HMM markerset")
+        parser.add_argument(
+            "markerset",
+            metavar='HMM markerset or "list"',
+            nargs="?",
+            default="list",
+            help='Name of the HMM markerset. List the available markersets when omitted or set to "list"',
+        )
         opt_args = parser.add_argument_group("Options")
         opt_args.add_argument("-v", "--verbose", action="store_true", help="Verbose mode for debug")
         opt_args.add_argument("-h", "--help", action="help", help="show this help message and exit")

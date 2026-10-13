@@ -230,3 +230,11 @@ class TestMainMenu:
 
         assert "download Download HMM markers" in out
         assert "align Run multiple sequence alignments" in out
+
+    @pytest.mark.parametrize("argv", [["download"], ["download", "list"]])
+    def test_download_lists_by_default(self, argv: list[str]):
+        from phyling import _menu
+
+        args = _menu.main_menu(argv)
+
+        assert args.markerset == "list"

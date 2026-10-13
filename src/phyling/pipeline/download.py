@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 @Timer.timer
-def download(markerset: str, **kwargs) -> None:
+def download(markerset: str = "list", **kwargs) -> None:
     """A pipeline that list the available BUSCO HMM markerset and download it when specifying."""
     CFG_DIRS[0].mkdir(parents=True, exist_ok=True)
     try:
