@@ -18,8 +18,8 @@ Published in *G3: Genes&#124;Genomes&#124;Genetics*: [jkag062 (2026)](https://do
 ## Pipeline Flowchart
 
 <p align="center">
-  <img src="misc/phyling_flowchart-light.svg#gh-light-mode-only" alt="Phyling flowchart" width="800">
-  <img src="misc/phyling_flowchart-dark.svg#gh-dark-mode-only" alt="Phyling flowchart" width="800">
+  <img src="https://raw.githubusercontent.com/stajichlab/Phyling/main/docs/_static/images/phyling_flowchart-light.svg#gh-light-mode-only" alt="Phyling flowchart" width="800">
+  <img src="https://raw.githubusercontent.com/stajichlab/Phyling/main/docs/_static/images/phyling_flowchart-dark.svg#gh-dark-mode-only" alt="Phyling flowchart" width="800">
 </p>
 
 ---
