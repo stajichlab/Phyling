@@ -630,6 +630,13 @@ class TestSearchHitsManager:
         assert manager._samples == {}
         assert len(manager._hmm_arr) == 0
 
+    def test_keeps_long_seqids(self):
+        """Sequence IDs longer than 64 characters are not truncated."""
+        long_id = "x" * 100
+        manager = SearchHitsManager([SearchHit(hmm="hmm1", sample="s1", seqid=long_id)])
+
+        assert manager[0].seqid == long_id
+
 
 # ---------------------------------------------------------------------------
 # TestOrthologSeqs
@@ -1141,3 +1148,12 @@ class TestBpMrtrans:
 
         result = bp_mrtrans(pep_msa, cds_recs)
         assert str(result[0].seq) == "ATG"
+
+    def test_bp_mrtrans_pairs_records_by_id(self):
+        """CDS records are matched to the protein alignment by ID, not by position."""
+        pep_msa = MultipleSeqAlignment([SeqRecord(Seq("MA"), id="b"), SeqRecord(Seq("M-"), id="a")])
+        cds_recs = [SeqRecord(Seq("ATG"), id="a"), SeqRecord(Seq("ATGGCC"), id="b")]
+
+        result = {rec.id: str(rec.seq) for rec in bp_mrtrans(pep_msa, cds_recs)}
+
+        assert result == {"b": "ATGGCC", "a": "ATG---"}

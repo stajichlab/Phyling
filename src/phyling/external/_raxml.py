@@ -78,7 +78,7 @@ class Raxml(TreeToolWrapper[Literal["DNA", "AA", "AUTO"]]):
             self._model = f"{model_file}.nex"
         else:
             info = part_info[0]
-            self._model = "+".join([info.model, info.stationary, info.invariant, info.gamma])
+            self._model = "+".join(part for part in (info.model, info.stationary, info.invariant, info.gamma) if part)
 
     def _construct_cmd(
         self,

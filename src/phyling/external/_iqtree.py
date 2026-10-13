@@ -84,16 +84,15 @@ class ModelFinder(BinaryWrapper[Path]):
                 raise ValueError(f"Partitioning analysis is not allowed when using {TreeMethods.FT.method}.")
             partition_file = Path(partition_file)
         method_idx = list(TreeMethods).index(TreeMethods[method.upper()])
-        if seqtype == "AUTO" or seqtype != "DNA" or seqtype != "AA":
-            f = gzip.open(file, "rt") if is_gzip_file(file) else open(file)
-
-            for r in SeqIO.FastaIO.SimpleFastaParser(f):
-                seqtype_ = guess_seqtype(r[1])
-                if seqtype_ in (SeqTypes.DNA, SeqTypes.PEP):
-                    break
-            if seqtype_ == SeqTypes.RNA:
-                raise SeqtypeError(f"Invalid seqtype: {seqtype}.")
-            f.close()
+        if seqtype not in (SeqTypes.DNA, SeqTypes.PEP):
+            seqtype_ = None
+            with gzip.open(file, "rt") if is_gzip_file(file) else open(file) as f:
+                for r in SeqIO.FastaIO.SimpleFastaParser(f):
+                    seqtype_ = guess_seqtype(r[1])
+                    if seqtype_ in (SeqTypes.DNA, SeqTypes.PEP):
+                        break
+            if seqtype_ not in (SeqTypes.DNA, SeqTypes.PEP):
+                raise SeqtypeError(f"Cannot determine a DNA or peptide seqtype from {file}.")
             seqtype = seqtype_
         if seqtype == SeqTypes.DNA:
             seqtype_ = "DNA"
@@ -122,24 +121,27 @@ class ModelFinder(BinaryWrapper[Path]):
                 self._result = self._output
         else:
             model, params = [], []
+            best_model_prefix = "best_model_BIC: "
             with gzip.open(self._output, "rt") as f:
                 for line in f.read().strip("\n").split("\n"):
-                    best_model_prefix = "best_model_BIC: "
                     if line.startswith(best_model_prefix):
-                        best_model = line.lstrip(best_model_prefix)
-                        model, *params = best_model.split("+")
+                        model, *iqtree_params = line.removeprefix(best_model_prefix).split("+")
                         method_idx = list(TreeMethods).index(TreeMethods[self._method.upper()])
                         # Convert model in IQTree name to the name of each tool
-                        model = ALL_MODELS[ALL_MODELS[:, 2] == model, method_idx].tolist()
-                        for param in params:
-                            if self._method == "ft":
-                                if param.startswith(("F", "I")):
-                                    params
+                        model = ALL_MODELS[ALL_MODELS[:, 2] == model, method_idx].tolist()[:1]
+                        params = []
+                        for param in iqtree_params:
+                            if param.startswith(("F", "I")):
+                                tbl = STATIONARY_CODES if param.startswith("F") else INVARIANT_CODES
+                                converted = tbl[tbl[:, 2] == param, method_idx]
+                                # Codes without an equivalent in the target tool (e.g. any F/I for FastTree) are dropped
+                                if converted.size and converted[0]:
+                                    params.append(converted[0].item())
                             else:
-                                if param.startswith("F"):
-                                    param = STATIONARY_CODES[STATIONARY_CODES[:, 2] == param, method_idx][0].item()
-                                elif param.startswith("F"):
-                                    param = INVARIANT_CODES[INVARIANT_CODES[:, 2] == param, method_idx][0].item()
+                                params.append(param)
+                        break
+            if not model:
+                raise RuntimeError(f"Cannot find a best model supported by {self._method} in {self._output}.")
             self._result = "+".join(model + params)
 
     def _construct_cmd(

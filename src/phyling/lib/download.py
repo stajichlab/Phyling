@@ -150,21 +150,26 @@ class BuscoParser(ContextDecorator):
             tar_path.write_bytes(data)
 
             with tarfile.open(tar_path, "r:gz") as f:
-                # Python 3.12+ Security: 'data' filter prevents path traversal
+                # The 'data' filter blocks path traversal, links and special files
                 if hasattr(tarfile, "data_filter"):
                     f.extractall(tmp_path, filter="data")
                 else:
-                    # Python 3.9 - 3.11 behavior
+                    # Older Python (< 3.10.12/3.11.4) without extraction filters: only allow plain files and
+                    # directories that stay inside the extraction folder
+                    for member in f.getmembers():
+                        if not (member.isfile() or member.isdir()) or not (tmp_path / member.name).resolve().is_relative_to(
+                            tmp_path.resolve()
+                        ):
+                            raise RuntimeError(f"Unsafe entry {member.name!r} in the {markerset} archive. Aborted.")
                     f.extractall(tmp_path)
 
-            # 2. Cleanup existing and move new content into place
-            if output_dir.exists():
-                shutil.rmtree(output_dir)
-
-            # 3. Find the extracted folder
+            # 2. Find the extracted folder
             # BUSCO tarballs usually contain a single top-level folder
             extracted_folders = [p for p in tmp_path.iterdir() if p.is_dir()]
             if extracted_folders:
+                # 3. Replace any existing copy only once the new content is ready
+                if output_dir.exists():
+                    shutil.rmtree(output_dir)
                 # Move the first directory found to the final destination
                 shutil.move(str(extracted_folders[0]), str(output_dir))
             else:

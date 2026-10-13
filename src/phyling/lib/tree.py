@@ -713,14 +713,13 @@ class MFA2TreeList(_abc.SeqDataListABC[MFA2Tree]):
                 Phylo.write(self.trees, f, "newick")
             runner = Astral(output / "trees.nw", output / "consensus.nw", seed=seed, threads=threads)
             runner.run()
+            # Read the result before the temporary directory is removed
+            result = Phylo.read(runner.result, "newick") if tempdir else Path(runner.result)
         finally:
             if tempdir:
                 tempdir.cleanup()
         logger.info("Consensus tree is done.")
-        if tempdir:
-            return Phylo.read(runner.result, "newick")
-        else:
-            return Path(runner.result)
+        return result
 
     @Timer.timer
     @_check_single_file
@@ -871,15 +870,13 @@ def bootstrap(
 
         runner = UFBoot(mfa2tree.file, tree, output, model=str(model), bs=bs, seed=seed, threads=threads, threads_max=threads_max)
         runner.run()
-
+        # Read the result before the temporary directory is removed
+        result = Phylo.read(runner.result, "newick") if tempdir else Path(runner.result)
     finally:
         if tempdir:
             tempdir.cleanup()
     logger.info("Bootstrapping on %s is done.", mfa2tree.name)
-    if tempdir:
-        return Phylo.read(runner.result, "newick")
-    else:
-        return Path(runner.result)
+    return result
 
 
 @overload
@@ -952,15 +949,13 @@ def branch_concordance(
             mfa2tree.file, tree, output, model=str(model), scfl=scfl, seed=seed, threads=threads, threads_max=threads_max
         )
         runner.run()
-
+        # Read the result before the temporary directory is removed
+        result = Phylo.read(runner.result, "newick") if tempdir else Path(runner.result)
     finally:
         if tempdir:
             tempdir.cleanup()
     logger.info("Site concordance factor calculation on %s is done.", mfa2tree.name)
-    if tempdir:
-        return Phylo.read(runner.result, "newick")
-    else:
-        return Path(runner.result)
+    return result
 
 
 def fill_missing_taxon(samples: Sequence[str], msa: MultipleSeqAlignment) -> MultipleSeqAlignment:

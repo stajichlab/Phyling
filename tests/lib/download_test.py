@@ -220,6 +220,23 @@ class TestBuscoParserDownload:
             with pytest.raises(ValueError, match="MD5 mismatch"):
                 bp.download(markerset)
 
+    def test_save_markerset_rejects_path_traversal_without_data_filter(self, tmp_path, monkeypatch):
+        monkeypatch.delattr(tarfile, "data_filter", raising=False)
+        buf = BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            info = tarfile.TarInfo("../evil.txt")
+            info.size = 4
+            tar.addfile(info, BytesIO(b"evil"))
+        parser = object.__new__(BuscoParser)
+        cfg_dir = tmp_path / "cfg"
+        cfg_dir.mkdir()
+        parser._cfg_dirs = [cfg_dir]
+
+        with pytest.raises(RuntimeError, match="Unsafe entry"):
+            parser._save_markerset(buf.getvalue(), "marker")
+
+        assert not any(tmp_path.rglob("evil.txt"))
+
 
 class TestBuscoParserMetadataPersistence:
     def test_metadata_written_on_change(self, monkeypatch: pytest.MonkeyPatch, mock_hashlib_gen, cfg_dir: Path, mock_fetch):

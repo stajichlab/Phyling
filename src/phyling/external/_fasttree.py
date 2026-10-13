@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Literal
 
@@ -69,7 +68,7 @@ class FastTree(TreeToolWrapper[Literal["DNA", "AA"]]):
             if model.upper() in ("LG", "WAG"):
                 self._cmd.insert(2, f"-{model.lower()}")
 
-        if re.match("G", "+".join(params)):
+        if any(param.startswith("G") for param in params):
             self._cmd.insert(-1, "-gamma")
 
         if noml:

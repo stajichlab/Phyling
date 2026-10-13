@@ -275,11 +275,12 @@ class AlignPrecheck(OutputPrecheckABC):
             raise SystemExit("Files not changed and parameters are identical to the previous run. Aborted.")
         if "markerset" in diff_params:
             raise SystemExit("Markerset is changed. Aborted.")
+        # Remove files from the previous run so no stale alignments are left behind
+        rm_files = [x for x in self.output.iterdir() if x.is_file() if x.name != self.ckp]
         if "markerset_cutoff" in diff_params:
+            remove_files(*rm_files)
             return self.data, SearchHitsManager()
 
-        # Remove files
-        rm_files = [x for x in self.output.iterdir() if x.is_file() if x.name != self.ckp]
         drop_samples = [x.name for x in prev_samplelist if x.name not in self.data]
         if drop_samples:
             logger.info("Remove samples that no longer exist from the orthologs collection retrieved from the checkpoint.")

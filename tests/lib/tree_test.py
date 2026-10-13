@@ -550,6 +550,27 @@ class TestBootstrap:
         assert result.read_text(encoding="utf-8") == "ufboot"
 
 
+class TestBootstrapWithoutOutput:
+    # Kept apart from TestBootstrap, whose class-scoped fixtures mock Phylo.read
+    def test_reads_result_before_tempdir_cleanup(self, monkeypatch):
+        """Without an output folder the result is read from the temporary folder before it is removed."""
+
+        class FakeUFBoot:
+            def __init__(self, file, tree, output, **kwargs):
+                self.result = Path(output) / "result.nw"
+
+            def run(self):
+                self.result.write_text("(a,b);\n")
+
+        monkeypatch.setattr("phyling.external.UFBoot", FakeUFBoot)
+        mfa2tree = MagicMock(file="aln.fa")
+        mfa2tree.name = "aln"
+
+        result = bootstrap(mfa2tree, "tree.nw")
+
+        assert {leaf.name for leaf in result.get_terminals()} == {"a", "b"}
+
+
 class TestBranchConcordance:
     def test_branch_concordance_returns_tree(
         self, mock_branch_concordance, real_mfa2tree: MFA2Tree, path_tree_file: Path, tmp_path

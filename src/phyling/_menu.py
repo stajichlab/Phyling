@@ -225,7 +225,7 @@ class Align(BaseModule):
             "-t",
             "--threads",
             type=int,
-            default=AVAIL_CPUS // 4 * 4,
+            default=AVAIL_CPUS // 4 * 4 or AVAIL_CPUS,
             help="Threads for hmmsearch and the number of parallelized jobs in MSA step. "
             + "Better be multiple of 4 if using more than 8 threads",
         )

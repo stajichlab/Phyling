@@ -171,3 +171,14 @@ class TestMain:
 
         result = main(args)
         assert result == 1
+
+
+class TestMainMenu:
+    def test_align_threads_default_is_positive(self, monkeypatch: pytest.MonkeyPatch):
+        from phyling import _menu
+
+        monkeypatch.setattr(_menu, "AVAIL_CPUS", 2)
+
+        args = _menu.main_menu(["align", "-I", "x", "-m", "y"])
+
+        assert args.threads == 2

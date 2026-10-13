@@ -459,7 +459,7 @@ class SearchHitsManager:
     hit_dtype = [
         ("hmm", "U32"),  # Unicode string up to 32 chars
         ("sample", "O"),  # Python Object (for SampleSeqs)
-        ("seqid", "U64"),  # Unicode string up to 64 chars
+        ("seqid", "O"),  # Python str (no length limit; IDs can be long)
     ]
 
     @overload
@@ -478,7 +478,7 @@ class SearchHitsManager:
 
         self._hmm_arr = np.array([], dtype=np.int32)
         self._sample_arr = np.array([], dtype=np.int32)
-        self._seqid_arr = np.array([], dtype="U64")  # Strings are okay here
+        self._seqid_arr = np.array([], dtype=object)  # Object dtype so long IDs are not truncated
 
         if hits:
             self.update(hits)
@@ -600,7 +600,7 @@ class SearchHitsManager:
         # 2. Encode the new data
         new_hmm_arr = np.array([self._orthologs[h.hmm] for h in new_hits], dtype=np.int32)
         new_sam_arr = np.array([self._samples[h.sample] for h in new_hits], dtype=np.int32)
-        new_seqs = np.array([h.seqid for h in new_hits], dtype="U64")
+        new_seqs = np.array([h.seqid for h in new_hits], dtype=object)
 
         # 3. Concatenate (Re-allocate)
         self._hmm_arr = np.concatenate([self._hmm_arr, new_hmm_arr])
@@ -1209,8 +1209,15 @@ def bp_mrtrans(pep_msa: MultipleSeqAlignment, cds_recs: list[SeqRecord]) -> Mult
     gap = "-"
     codon_gap = codon_size * gap
 
+    # Aligners such as MUSCLE may reorder records, so pair by ID whenever every protein ID has a CDS match.
+    cds_by_id = {rec.id: rec for rec in cds_recs}
+    if len(cds_by_id) == len(cds_recs) and all(rec.id in cds_by_id for rec in pep_msa):
+        pairs = [(pep_rec, cds_by_id[pep_rec.id]) for pep_rec in pep_msa]
+    else:
+        pairs = list(zip(pep_msa, cds_recs))
+
     cds_msa = MultipleSeqAlignment([], annotations={"seqtype": SeqTypes.DNA})
-    for pep_rec, cds_rec in zip(pep_msa, cds_recs):
+    for pep_rec, cds_rec in pairs:
         pep_rec: SeqRecord
         dna_idx = 0
         dna_align: list[str] = []
