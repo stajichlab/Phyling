@@ -82,7 +82,7 @@ class BinaryWrapper(ABC, Generic[_O]):
                 "To run again, you must instantiate a new tool wrapper."
             )
         if not hasattr(self, "_cmd"):
-            RuntimeError(f"{self._prog} failed without cmd constructed")
+            raise RuntimeError(f"{self._prog} failed without cmd constructed")
         if isinstance(self._output, Path):
             self._output.parent.mkdir(parents=True, exist_ok=True)
         self._logger.debug(self.cmd)

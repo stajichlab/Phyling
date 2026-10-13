@@ -89,7 +89,12 @@ class OutputPrecheckABC(ABC):
         if not self.output.is_dir():
             raise NotADirectoryError(f"{self.output} is already existed but not a folder. Aborted.")
 
-        if force_rerun:
+        if force_rerun and any(self.output.iterdir()):
+            # Only wipe folders that were created by this module, never an arbitrary non-empty path
+            if not (self.output / self.ckp).exists():
+                raise FileExistsError(
+                    f"Refusing to remove {self.output}: it is not empty and has no {self.ckp} checkpoint. Aborted."
+                )
             remove_dirs(self.output)
             self.output.mkdir()
 

@@ -28,3 +28,14 @@ class TestNexusHandler:
         with NexusHandler(nexus) as fi:
             with pytest.raises(RuntimeError, match="Only a single continuous range"):
                 fi.read()
+
+    def test_non_nexus_file_is_closed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        not_nexus = tmp_path / "part.txt"
+        not_nexus.write_text("LG, p1 = 1-100\n")
+        closed = []
+        original_close = NexusHandler.close
+        monkeypatch.setattr(NexusHandler, "close", lambda self: closed.append(True) or original_close(self))
+
+        with pytest.raises(RuntimeError, match="Not a nexus file"):
+            NexusHandler(not_nexus)
+        assert closed

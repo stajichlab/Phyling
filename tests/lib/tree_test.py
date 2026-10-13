@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gzip
+import logging
 import random
 import re
 from pathlib import Path
@@ -540,6 +541,24 @@ def mock_get_consensus_tree_env(spy_phylo_read, tmp_path, monkeypatch: pytest.Mo
     mock_astral.return_value.result = result_file
 
     monkeypatch.setattr("phyling.external.Astral", mock_astral)
+
+
+class TestMFA2TreeListBuildLogging:
+    def test_parallel_build_restores_logger_level(self, path_pep_msa: list[Path], monkeypatch):
+        """The per-tree logger level is restored after a parallel build."""
+        monkeypatch.setattr(MFA2Tree, "build", lambda self, *args, **kwargs: None)
+        mfa2tree_logger = logging.getLogger("phyling.lib.tree.MFA2Tree")
+        monkeypatch.setattr(mfa2tree_logger, "level", logging.INFO)
+
+        MFA2TreeList(path_pep_msa).build("ft", jobs=4)
+
+        assert mfa2tree_logger.level == logging.INFO
+
+
+class TestMFA2TreeEquality:
+    def test_eq_before_toverr_compares_names(self, path_pep_msa: list[Path]):
+        assert MFA2Tree(path_pep_msa[0]) == MFA2Tree(path_pep_msa[0])
+        assert MFA2Tree(path_pep_msa[0]) != MFA2Tree(path_pep_msa[1])
 
 
 class TestMFA2TreeListConsensus:

@@ -168,6 +168,15 @@ class TestBuscoParserInit:
         with BuscoParser(tmp_path) as bp:
             assert [name.replace(" [Outdated]", "") for name in bp.local] == ["poxviridae_odb10"]
 
+    def test_download_reports_online_metadata_error(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        def _fail(url: str, timeout: int = 30) -> bytes:
+            raise OSError("network down")
+
+        monkeypatch.setattr(download_mod, "_fetch_url", _fail)
+        with BuscoParser(tmp_path) as bp:
+            with pytest.raises(RuntimeError, match="Could not retrieve online metadata: network down"):
+                bp.download("fungi_odb10")
+
 
 class TestBuscoParserProperties:
     def test_online_returns_sorted_list(self, cfg_dir: Path, mock_fetch):

@@ -47,7 +47,7 @@ class ModelFinder(BinaryWrapper[Path]):
         seqtype: Literal["dna", "pep", "AUTO"] = "AUTO",
         method: Literal["ft", "raxml", "iqtree"] = "iqtree",
         seed: int = -1,
-        threads: int = 1,
+        threads: int = -1,
         threads_max: int = AVAIL_CPUS,
     ) -> None: ...
     @overload
@@ -60,7 +60,7 @@ class ModelFinder(BinaryWrapper[Path]):
         seqtype: Literal["dna", "pep", "AUTO"] = "AUTO",
         method: Literal["ft", "raxml", "iqtree"] = "iqtree",
         seed: int = -1,
-        threads: int = 1,
+        threads: int = -1,
         threads_max: int = AVAIL_CPUS,
     ) -> None: ...
     def __init__(

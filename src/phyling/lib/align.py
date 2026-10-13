@@ -123,6 +123,12 @@ class HMMMarkerSet(_abc.DataListABC[HMM]):  # type: ignore[type-var]
             if key not in self.names:
                 raise KeyError(f"{key}: Sample not found.")
             return self._data[self.names.index(key)]
+        if isinstance(key, slice):
+            # __init__ only accepts paths, so build the subset from the loaded profiles directly
+            subset = self.__class__()
+            for hmm in self._data[key]:
+                subset.append(hmm)
+            return subset
         return super().__getitem__(key)
 
     def have_cutoffs(self, verbose: bool = True) -> bool:
@@ -241,10 +247,9 @@ class SampleSeqs(_abc.SeqFileWrapperABC):
             SeqTypes.DNA: Alphabet.dna(),
             SeqTypes.RNA: Alphabet.rna(),
         }
-        f = gzip.open(self.file) if is_gzip_file(self.file) else open(self.file, "rb")
-        with SequenceFile(cast(BinaryIO, f), digital=True, alphabet=seqtype_conversion[self.seqtype]) as sf:
-            seqblock: DigitalSequenceBlock = sf.read_block()
-        f.close()
+        with gzip.open(self.file) if is_gzip_file(self.file) else open(self.file, "rb") as f:
+            with SequenceFile(cast(BinaryIO, f), digital=True, alphabet=seqtype_conversion[self.seqtype]) as sf:
+                seqblock: DigitalSequenceBlock = sf.read_block()
 
         if self.seqtype == SeqTypes.PEP:
             logger.debug("%s contains %s sequences.", self.file, self.seqtype)
@@ -496,12 +501,13 @@ class SearchHitsManager:
         """
         if not isinstance(other, type(self)):
             return NotImplemented
-        return (self._orthologs, self._samples, self._hmm_arr, self._sample_arr, self._seqid_arr) == (
-            other._orthologs,
-            other._samples,
-            other._hmm_arr,
-            other._sample_arr,
-            other._seqid_arr,
+        # numpy arrays must be compared element-wise; tuple comparison would be ambiguous
+        return (
+            self._orthologs == other._orthologs
+            and self._samples == other._samples
+            and np.array_equal(self._hmm_arr, other._hmm_arr)
+            and np.array_equal(self._sample_arr, other._sample_arr)
+            and np.array_equal(self._seqid_arr, other._seqid_arr)
         )
 
     @overload

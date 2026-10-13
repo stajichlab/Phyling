@@ -335,6 +335,8 @@ class NexusHandler(CustomHandler):
         """
         super().__init__(file, mode, format=format)
         if "r" in mode and self._file.readline().strip().lower() != self._header:
+            # __exit__ never runs when __init__ fails, so close the file here
+            self.close()
             raise RuntimeError("Not a nexus file.")
 
     def read(self) -> dict[str, Partitions]:

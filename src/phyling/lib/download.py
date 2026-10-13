@@ -22,6 +22,7 @@ class BuscoParser(ContextDecorator):
         """Initiate the object and download the latest metadata from online database."""
         self._cfg_dirs = [Path(x) for x in cfg_dirs]
         self._online_metadata: dict[str, dict] = {}
+        self._online_error: Exception | None = None
         self._local_metadata: dict[str, dict] = {}
         self._get_metadata_online()
         self._get_local_metadata()
@@ -42,6 +43,11 @@ class BuscoParser(ContextDecorator):
 
         # Returning False allows exceptions to propagate normally
         return False
+
+    @property
+    def online_error(self) -> Exception | None:
+        """The error raised while fetching the online metadata, if any."""
+        return self._online_error
 
     @property
     def online(self) -> list[str]:
@@ -66,6 +72,8 @@ class BuscoParser(ContextDecorator):
     def download(self, markerset: str) -> None:
         """Download the given markerset from busco database."""
         if markerset not in self._online_metadata:
+            if self._online_error:
+                raise RuntimeError(f"Could not retrieve online metadata: {self._online_error}") from self._online_error
             raise KeyError(f"Markerset '{markerset}' not found in BUSCO database.")
 
         online_info = self._online_metadata[markerset]
@@ -101,6 +109,8 @@ class BuscoParser(ContextDecorator):
                         "md5": parts[2],
                     }
         except Exception as e:
+            # Keep going so local markersets can still be listed offline; download() re-raises this error
+            self._online_error = e
             logger.error("Could not retrieve online metadata: %s", e)
 
     def _get_local_metadata(self):

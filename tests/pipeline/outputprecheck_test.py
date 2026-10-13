@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from phyling.lib.align import SampleList
 from phyling.lib.tree import MFA2Tree, MFA2TreeList
 from phyling.pipeline._outputprecheck import AlignPrecheck, FilterPrecheck
@@ -34,6 +36,15 @@ class TestAlignPrecheck:
 
         assert second.params["markerset"] is None
         assert AlignPrecheck.params["markerset"] is None
+
+    def test_force_rerun_refuses_folder_without_checkpoint(self, tmp_path):
+        keep = tmp_path / "important.txt"
+        keep.write_text("keep me")
+        precheck = AlignPrecheck(tmp_path, MagicMock(spec=SampleList), markerset="m", markerset_cutoff=1, method="hmmalign")
+
+        with pytest.raises(FileExistsError, match="Refusing to remove"):
+            precheck.precheck(force_rerun=True)
+        assert keep.exists()
 
 
 class TestFilterPrecheck:

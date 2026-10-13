@@ -220,3 +220,13 @@ class TestMainMenu:
         args = _menu.main_menu(["align", "-I", "x", "-m", "y"])
 
         assert args.threads == 2
+
+    def test_module_help_text(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture):
+        from phyling import _menu
+
+        with pytest.raises(SystemExit):
+            _menu.main_menu(["-h"])
+        out = " ".join(capsys.readouterr().out.split())
+
+        assert "download Download HMM markers" in out
+        assert "align Run multiple sequence alignments" in out

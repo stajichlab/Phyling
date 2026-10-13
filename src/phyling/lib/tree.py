@@ -201,11 +201,17 @@ class MFA2Tree(_abc.SeqFileWrapperABC):
             other (MFA2Tree): Another instance of the same class.
 
         Returns:
-            bool: True if the objects have the same toverr, otherwise False.
+            bool: True if the objects have the same toverr, otherwise False. Falls back to comparing names when either
+            object has no toverr yet.
         """
         if not isinstance(other, type(self)):
             return NotImplemented
+        if getattr(self, "_toverr", None) is None or getattr(other, "_toverr", None) is None:
+            return super().__eq__(other)
         return self.toverr == other.toverr
+
+    # Equality depends on the mutable toverr, so instances stay unhashable on purpose
+    __hash__ = None  # type: ignore[assignment]
 
     def load(self) -> None:
         """Load the MultipleSeqAlignment.
@@ -614,6 +620,11 @@ class MFA2TreeList(_abc.SeqDataListABC[MFA2Tree]):
 
         step_size = min(max(10, len(self) // 200 * 50), 500)
         total = len(self)
+        # Quiet the per-tree logs once here rather than in each worker thread, where concurrent save/restore of the shared
+        # logger level could leave it stuck at WARNING
+        mfa2tree_logger = logging.getLogger("phyling.lib.tree.MFA2Tree")
+        original_level = mfa2tree_logger.level
+        mfa2tree_logger.setLevel(logging.WARNING)
         try:
             if len(self) == 1 or jobs <= 1:
                 logger.debug("Sequential mode with %s threads.", threads)
@@ -631,6 +642,8 @@ class MFA2TreeList(_abc.SeqDataListABC[MFA2Tree]):
         except Exception:
             logger.error("%s", traceback.format_exc())
             raise
+        finally:
+            mfa2tree_logger.setLevel(original_level)
 
     @Timer.timer
     def compute_toverr(self, *, threads: int = 1) -> None:
@@ -1021,13 +1034,7 @@ def _build_helper(
         seed (int): Seed number for reproducibility. Defaults to -1 (random seed).
         threads (int): Maximum number of threads to use. Only applicable to RAxML-NG and IQ-TREE. Defaults to 1.
     """
-    mfa2tree_logger = logging.getLogger("phyling.lib.tree.MFA2Tree")
-    original_level = mfa2tree_logger.level
-    mfa2tree_logger.setLevel(logging.WARNING)
-    try:
-        if output:
-            instance.build(method, output, model=model, noml=noml, bs=bs, scfl=scfl, seed=seed, threads_max=threads)
-        else:
-            instance.build(method, model=model, noml=noml, bs=bs, scfl=scfl, seed=seed, threads_max=threads)
-    finally:
-        mfa2tree_logger.setLevel(original_level)
+    if output:
+        instance.build(method, output, model=model, noml=noml, bs=bs, scfl=scfl, seed=seed, threads_max=threads)
+    else:
+        instance.build(method, model=model, noml=noml, bs=bs, scfl=scfl, seed=seed, threads_max=threads)

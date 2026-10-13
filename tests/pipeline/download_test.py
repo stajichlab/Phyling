@@ -15,6 +15,7 @@ def mock_busco_parser(monkeypatch: pytest.MonkeyPatch):
     mock_metadata = MagicMock()
     mock_metadata.online = ["fungi_odb10", "bacteria_odb10", "poxviridae_odb10"]
     mock_metadata.local = []
+    mock_metadata.online_error = None
     mock_metadata.__enter__ = MagicMock(return_value=mock_metadata)
     mock_metadata.__exit__ = MagicMock(return_value=False)
 
@@ -58,8 +59,22 @@ class TestDownload:
         mock_busco_parser.download.assert_called_once_with("fungi_odb10")
 
     def test_download_invalid_markerset_raises(self, mock_busco_parser):
-        with pytest.raises(RuntimeError):
+        with pytest.raises(RuntimeError, match="Markerset not available: nonexistent_odb10"):
             download("nonexistent_odb10")
+
+    def test_download_reports_online_metadata_error(self, mock_busco_parser):
+        mock_busco_parser.online = []
+        mock_busco_parser.online_error = OSError("network down")
+        with pytest.raises(RuntimeError, match="Could not retrieve online metadata: network down"):
+            download("fungi_odb10")
+
+    def test_url_error_is_chained(self, mock_busco_parser):
+        from urllib.error import URLError
+
+        mock_busco_parser.__enter__ = MagicMock(side_effect=URLError("connection refused"))
+        with pytest.raises(URLError, match="connection refused") as excinfo:
+            download("fungi_odb10")
+        assert isinstance(excinfo.value.__cause__, URLError)
 
     def test_url_error_raises(self, mock_busco_parser):
         from urllib.error import URLError

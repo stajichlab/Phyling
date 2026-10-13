@@ -40,14 +40,12 @@ def download(markerset: str, **kwargs) -> None:
                     _wrapper(metadata.local, col=col, col_width=col_width, msg=msg)
             elif markerset in metadata.online:
                 metadata.download(markerset)
+            elif metadata.online_error:
+                raise RuntimeError(f"Could not retrieve online metadata: {metadata.online_error}") from metadata.online_error
             else:
-                raise RuntimeError(
-                    'Markerset not available: %s Please check it again with "list" option.',
-                    markerset,
-                )
+                raise RuntimeError(f'Markerset not available: {markerset}. Please check it again with "list" option.')
     except URLError as e:
-        raise URLError(e.reason)
-        raise URLError("Connection lost or URL currently not available") from e
+        raise URLError(f"Connection lost or URL currently not available: {e.reason}") from e
 
 
 def _wrapper(item_list: list[str], col: int, col_width: int, msg: str | None = None) -> None:

@@ -191,6 +191,14 @@ class TestHMMMarkerSet:
             # Passing an integer instead of path or dict
             marker_set.set_cutoffs([1, 2, 3])  # type: ignore
 
+    def test_slice_returns_subset(self, path_hmm_dir: Path):
+        marker_set = HMMMarkerSet(data=path_hmm_dir)
+
+        subset = marker_set[0:2]
+
+        assert isinstance(subset, HMMMarkerSet)
+        assert subset.names == marker_set.names[0:2]
+
     def test_set_cutoffs_skips_blank_lines(self, path_hmm_file: Path, tmp_path: Path):
         cutoff_file = tmp_path / "scores_cutoff"
         cutoff_file.write_text("# comment\n\n10at10240\t450.0\n\n")
@@ -645,6 +653,11 @@ class TestSearchHitsManager:
         manager = SearchHitsManager([SearchHit(hmm="hmm1", sample="s1", seqid=long_id)])
 
         assert manager[0].seqid == long_id
+
+    def test_eq_compares_array_contents(self):
+        hits = [SearchHit(hmm="hmm1", sample="s1", seqid="a"), SearchHit(hmm="hmm2", sample="s1", seqid="b")]
+        assert SearchHitsManager(hits) == SearchHitsManager(hits)
+        assert SearchHitsManager(hits) != SearchHitsManager(hits[:1])
 
 
 # ---------------------------------------------------------------------------

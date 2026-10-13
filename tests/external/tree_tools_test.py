@@ -70,3 +70,13 @@ class TestRaxml:
         runner._post_run()
 
         assert runner._model == "LG+G4"
+
+
+class TestBinaryWrapper:
+    def test_run_without_cmd_raises(self, tmp_path):
+        runner = object.__new__(_fasttree.FastTree)
+        runner.done = False
+        runner._file = tmp_path / "aln.fa"
+
+        with pytest.raises(RuntimeError, match="without cmd constructed"):
+            runner.run()

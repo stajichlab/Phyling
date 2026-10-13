@@ -119,7 +119,7 @@ def main_menu(argv=None) -> Args:
 
 
 class Download(BaseModule):
-    help = "Run multiple sequence alignments"
+    help = "Download HMM markers"
     description = """Help to download/update BUSCO v5 markerset to a local folder.
 
     First it checks whether the metadata file is exist under the config folder ~/.phyling. A missing or outdated file will trigger
@@ -141,7 +141,7 @@ class Download(BaseModule):
 
 
 class Align(BaseModule):
-    help = "Download HMM markers"
+    help = "Run multiple sequence alignments"
     description = """Perform multiple sequence alignment (MSA) on orthologous sequences that match the hmm markers across samples.
 
     Initially, hmmsearch is used to match the samples against a given markerset and report the top hit of each sample for each hmm
@@ -280,7 +280,7 @@ class Filter(BaseModule):
             type=Path,
             default="phyling-filter-%s" % time.strftime("%Y%m%d-%H%M%S", time.gmtime()),
             help="Output directory of the treeness.tsv and selected MSAs "
-            + "(default: phyling-tree-[YYYYMMDD-HHMMSS] (UTC timestamp))",
+            + "(default: phyling-filter-[YYYYMMDD-HHMMSS] (UTC timestamp))",
         )
         opt_args.add_argument(
             "--seqtype",
