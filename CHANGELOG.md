@@ -7,9 +7,80 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `phyling.__version__` and `phyling.__author__`.
+- `phyling download` without an argument lists the available markersets, same as `phyling download list`.
+
+### Changed
+
+- Downloaded markersets now go to `$XDG_CACHE_HOME/phyling` (`~/.cache/phyling` by default) when `PHYLING_DB` is not set
+  or its first folder is not writable. Importing `phyling` no longer creates a config folder; it is created on the first
+  download.
+- The log file is written to `<output>.log` next to the output folder while a module runs, and moved to
+  `<output>/log.txt` only when the run succeeds. It now includes messages from every part of Phyling, not just the
+  command line.
+- `phyling tree` stops before building any tree if `tree.nwk` (or the figure, with `--figure`) already exists in the
+  output folder, instead of failing after the inference.
+- NEXUS partition files with several ranges or a codon stride (`\3`) in one charset now raise an error instead of
+  silently keeping only part of the charset.
+- Alignments whose sequence type cannot be recognized, empty input files and RNA alignments now fail with a clear error
+  as soon as they are loaded.
+- `force_rerun` (Python API) only removes an output folder that contains the module's checkpoint file.
+- Package license is declared as an SPDX expression (`license = "MIT"`), which requires `hatchling>=1.27` to build.
+- `requires-python` no longer has an upper bound.
+
+### Deprecated
+
+- Markersets stored in `~/.phyling` are still found, but support will be removed in a future release. `phyling download`
+  and `phyling align` warn when a markerset is read from there; move them to `$XDG_CACHE_HOME/phyling`.
+
+### Removed
+
+- `phyling.VERSION` and `phyling.AUTHOR`. Use `phyling.__version__` and `phyling.__author__` instead.
+
 ### Fixed
 
 - Container image now includes `ps` (conda-forge `procps-ng`), which Nextflow needs to collect task metrics. The build checks for it.
+- Installing on Python 3.10 now pulls in `typing-extensions`, which Phyling needs there.
+- CDS alignments built with MUSCLE could attach nucleotide sequences to the wrong taxon. Protein and CDS records are now
+  matched by sequence ID.
+- Sequence IDs longer than 64 characters were truncated during the alignment step.
+- The best model chosen by ModelFinder was mangled for some names (for example `BLOSUM62` became `LOSUM62`), and its
+  frequency (`+F`) and invariant-site (`+I`) parts were not converted for RAxML-NG and FastTree.
+- ModelFinder ignored a sequence type given by the user and always guessed it from the file.
+- FastTree ran without `-gamma` when the gamma parameter was not the first model parameter (for example `GTR+I+G4`).
+- Model strings taken from RAxML-NG could contain empty parts (`LG+++G4`), which broke the later bootstrap and
+  concordance steps.
+- Bootstrap, concordance and consensus trees failed when no output folder was given, because the result was read after
+  its temporary folder had been deleted.
+- `phyling align` left old alignments in the output folder when only the e-value or cutoff changed, and `filter` and
+  `tree` then used them.
+- The default thread count for `phyling align` was 0 on machines or SLURM allocations with fewer than 4 CPUs.
+- `phyling filter` refused to re-run after its input alignments changed if the parameters were the same.
+- Rerunning a module with `-v` in an existing output folder failed, and a failed run left a log file that blocked the
+  next attempt.
+- Parameters from one run carried over into the next when several runs were made in the same Python process.
+- Parallel tree building could leave the tree logger stuck at WARNING level.
+- `phyling align -m <name>` could pick up a markerset from a lower-priority config folder after finding it in a
+  higher-priority one.
+- Passing a single path as a `str` to the `align`, `filter` or `tree` Python functions split it into characters.
+- Gzipped alignments can be loaded for tree building.
+- Blank lines in local metadata and score cutoff files caused a crash.
+- `phyling download list` crashed when no markersets were available or the terminal was narrower than 40 characters.
+- A failed online metadata download was reported as "markerset not found"; the network error is now shown.
+- The "markerset not available" error message did not include the markerset name.
+- Help text for `download` and `align` was swapped, and the default output folder shown for `filter` was wrong.
+- Slicing an `HMMMarkerSet` returned an empty set.
+- Comparing `SearchHitsManager` objects gave wrong results or raised an error, and comparing `MFA2Tree` objects before
+  their treeness/RCV was computed raised an error.
+- Some files were left open when an error occurred.
+
+### Security
+
+- Downloaded markerset archives are checked for paths outside the target folder, links and special files on Python
+  versions without `tarfile` extraction filters. An existing markerset is replaced only after the new one has been
+  extracted successfully.
 
 ## [2.4.1] - 2026-09-03
 
