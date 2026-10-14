@@ -9,7 +9,6 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- `phyling.__version__` and `phyling.__author__`.
 - `phyling download` without an argument lists the available markersets, same as `phyling download list`.
 
 ### Changed
@@ -27,17 +26,12 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 - Alignments whose sequence type cannot be recognized, empty input files and RNA alignments now fail with a clear error
   as soon as they are loaded.
 - `force_rerun` (Python API) only removes an output folder that contains the module's checkpoint file.
-- Package license is declared as an SPDX expression (`license = "MIT"`), which requires `hatchling>=1.27` to build.
 - `requires-python` no longer has an upper bound.
 
 ### Deprecated
 
 - Markersets stored in `~/.phyling` are still found, but support will be removed in a future release. `phyling download`
   and `phyling align` warn when a markerset is read from there; move them to `$XDG_CACHE_HOME/phyling`.
-
-### Removed
-
-- `phyling.VERSION` and `phyling.AUTHOR`. Use `phyling.__version__` and `phyling.__author__` instead.
 
 ### Fixed
 
@@ -74,7 +68,6 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 - Slicing an `HMMMarkerSet` returned an empty set.
 - Comparing `SearchHitsManager` objects gave wrong results or raised an error, and comparing `MFA2Tree` objects before
   their treeness/RCV was computed raised an error.
-- Some files were left open when an error occurred.
 
 ### Security
 
