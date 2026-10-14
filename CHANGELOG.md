@@ -7,6 +7,8 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-10-14
+
 ### Added
 
 - `phyling download` without an argument lists the available markersets, same as `phyling download list`.
@@ -308,7 +310,9 @@ Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Implement back-translation to convert the peptide MSA results to DNA counterpart when receiving coding sequence fasta as inputs.
 
-[Unreleased]: https://github.com/stajichlab/Phyling/compare/v2.4.1...HEAD
+[Unreleased]: https://github.com/stajichlab/Phyling/compare/v2.5.0...HEAD
+
+[2.5.0]: https://github.com/stajichlab/Phyling/compare/v2.4.1...v2.5.0
 
 [2.4.1]: https://github.com/stajichlab/Phyling/compare/v2.4.0...v2.4.1
 
