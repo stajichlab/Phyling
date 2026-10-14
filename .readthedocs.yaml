@@ -6,6 +6,11 @@ build:
     python: "3.12"
   apt_packages:
     - graphviz
+  jobs:
+    post_checkout:
+      # Read the Docs clones shallowly; fetch the full history and tags so versioningit can find the last tag.
+      # A treeless fetch is not used here because git cannot convert an existing shallow clone into one reliably.
+      - git fetch --unshallow --tags || true
 
 sphinx:
   configuration: docs/conf.py

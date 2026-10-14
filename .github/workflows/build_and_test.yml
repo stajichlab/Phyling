@@ -63,7 +63,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          fetch-tags: true
+          # Full commit history without old file contents (treeless clone), so versioningit can find the last tag
+          # while the download stays small as history grows
+          fetch-depth: 0
+          filter: tree:0
 
       - name: Set up Python ${{ matrix.python }}
         uses: actions/setup-python@v7

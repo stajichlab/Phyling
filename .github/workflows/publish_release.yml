@@ -106,7 +106,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
+          # Full commit history without old file contents (treeless clone), so versioningit can find the last tag
+          # while the download stays small as history grows
           fetch-depth: 0
+          filter: tree:0
 
       - name: Download patch
         uses: actions/download-artifact@v8
