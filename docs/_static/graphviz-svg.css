@@ -1,0 +1,5 @@
+/* Linked into Graphviz SVGs (graph attribute "stylesheet"). The SVGs are embedded with <object>, which browsers render as a
+   separate document: without a matching color-scheme they paint an opaque white backdrop behind it in dark mode. */
+svg {
+  color-scheme: light dark;
+}
