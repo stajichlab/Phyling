@@ -1,0 +1,43 @@
+name: CI/pixi
+
+on:
+  push:
+    branches: ["main", "dev"]
+    paths: ["**.py", "pyproject.toml", ".github/workflows/ci-pixi.yml"]
+  pull_request:
+    branches: ["main", "dev"]
+    paths: ["**.py", "pyproject.toml", ".github/workflows/ci-pixi.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (pixi)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          # Full commit history without old file contents (treeless clone), so versioningit can find the last tag
+          # while the download stays small as history grows
+          fetch-depth: 0
+          filter: tree:0
+
+      # locked fails the job when pixi.lock no longer matches pyproject.toml. The environment also provides ASTER,
+      # FastTree and IQ-TREE from bioconda.
+      - name: Set up pixi dev environment
+        uses: prefix-dev/setup-pixi@v0.11.2
+        with:
+          environments: dev
+          locked: true
+          cache: true
+
+      - name: Verify external tools are available
+        run: pixi run -e dev sh -c "command -v astral && command -v fasttree && command -v iqtree"
+
+      - name: Test with pytest
+        run: pixi run -e dev test

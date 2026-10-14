@@ -1,0 +1,105 @@
+name: Build external tools
+
+# Reusable workflow that builds the external tools used by the default pipeline and uploads them as artifacts named
+# tool-<name>. Consumers fetch them all with actions/download-artifact (pattern: tool-*, merge-multiple: true).
+# Binaries are cached per version, so a version bump rebuilds automatically.
+
+on:
+  workflow_call:
+    inputs:
+      aster-version:
+        type: string
+        default: "1.25"
+      fasttree-version:
+        type: string
+        default: "2.2.0"
+      iqtree-version:
+        type: string
+        default: "3.1.4"
+
+jobs:
+  aster:
+    name: Build ASTER ${{ inputs.aster-version }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restore cached binary
+        id: cache
+        uses: actions/cache@v6
+        with:
+          path: bin/astral
+          key: ${{ runner.os }}-aster-${{ inputs.aster-version }}
+
+      - name: Compile from source
+        if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          VERSION: ${{ inputs.aster-version }}
+        run: |
+          curl -fsSL "https://github.com/chaoszhang/ASTER/archive/refs/tags/v${VERSION}.tar.gz" | tar xz
+          make -C "ASTER-${VERSION}" astral
+          mkdir -p bin
+          cp "ASTER-${VERSION}/bin/astral" bin/
+
+      - name: Verify executable
+        run: ./bin/astral --help 2>&1 | head -n 3
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tool-aster
+          path: bin/astral
+
+  fasttree:
+    name: Build FastTree ${{ inputs.fasttree-version }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restore cached binary
+        id: cache
+        uses: actions/cache@v6
+        with:
+          path: bin/FastTree
+          key: ${{ runner.os }}-fasttree-${{ inputs.fasttree-version }}
+
+      - name: Compile from source
+        if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          VERSION: ${{ inputs.fasttree-version }}
+        run: |
+          curl -fsSL "https://github.com/morgannprice/fasttree/archive/refs/tags/v${VERSION}.tar.gz" | tar xz
+          mkdir -p bin
+          gcc -O3 -finline-functions -funroll-loops -Wall -o bin/FastTree "fasttree-${VERSION}/FastTree.c" -lm
+
+      - name: Verify executable
+        run: ./bin/FastTree -expert 2>&1 | head -n 1
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tool-fasttree
+          path: bin/FastTree
+
+  iqtree:
+    name: Fetch IQ-TREE ${{ inputs.iqtree-version }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restore cached binary
+        id: cache
+        uses: actions/cache@v6
+        with:
+          path: bin/iqtree3
+          key: ${{ runner.os }}-iqtree-${{ inputs.iqtree-version }}
+
+      # IQ-TREE needs a large toolchain (Eigen, Boost, ...) to compile, so use the official static release binary
+      - name: Download release binary
+        if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          VERSION: ${{ inputs.iqtree-version }}
+        run: |
+          curl -fsSL "https://github.com/iqtree/iqtree3/releases/download/v${VERSION}/iqtree-${VERSION}-Linux-intel.tar.gz" | tar xz
+          mkdir -p bin
+          cp "iqtree-${VERSION}-Linux-intel/bin/iqtree3" bin/
+
+      - name: Verify executable
+        run: ./bin/iqtree3 --version | head -n 1
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tool-iqtree
+          path: bin/iqtree3

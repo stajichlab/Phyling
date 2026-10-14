@@ -1,0 +1,52 @@
+name: CI/Update pixi.lock for Dependabot
+
+# Dependabot bumps the dependencies in pyproject.toml but does not know about pixi.lock. Regenerate the lock file and
+# push it to the Dependabot branch so the PR stays installable with `pixi install --locked`.
+on:
+  pull_request:
+    paths: ["pyproject.toml"]
+
+# Dependabot runs get a read-only token by default; writing is needed to push the updated lock file.
+permissions:
+  contents: write
+
+concurrency:
+  group: update-pixi-lock-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  update-pixi-lock:
+    name: Update pixi.lock
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+
+    steps:
+      - name: Checkout Dependabot branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+          # Full commit history without old file contents, so versioningit can resolve the package version
+          fetch-depth: 0
+          filter: tree:0
+
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@v0.11.2
+        with:
+          run-install: false
+
+      - name: Update pixi.lock
+        run: pixi lock
+
+      - name: Commit and push pixi.lock
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if git diff --quiet -- pixi.lock; then
+            echo "pixi.lock is already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pixi.lock
+          git commit -m "Update pixi.lock"
+          git push origin "HEAD:${HEAD_REF}"

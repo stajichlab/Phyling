@@ -1,6 +1,6 @@
 # Phyling
 
-[![CI/build and test](https://github.com/stajichlab/Phyling/actions/workflows/build_and_test.yml/badge.svg)](https://github.com/stajichlab/Phyling/actions/workflows/build_and_test.yml)
+[![CI/pip](https://github.com/stajichlab/Phyling/actions/workflows/ci-pip.yml/badge.svg?branch=main)](https://github.com/stajichlab/Phyling/actions/workflows/ci-pip.yml)
 [![Conda](https://anaconda.org/bioconda/phyling/badges/version.svg)](https://anaconda.org/bioconda/phyling)
 [![Container](https://ghcr-badge.egpl.dev/stajichlab/phyling/latest_tag?trim=major&label=Image)](https://github.com/stajichlab/Phyling/pkgs/container/phyling)
 [![DOI](https://img.shields.io/badge/DOI-10.1093/g3journal/jkag062-blue)](https://doi.org/10.1093/g3journal/jkag062)

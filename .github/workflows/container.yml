@@ -31,7 +31,7 @@ on:
         default: false
 
 concurrency:
-  group: container-${{ github.event_name == 'workflow_call' && inputs.ref || github.ref }}
+  group: container-${{ inputs.ref || github.ref }}
   cancel-in-progress: false
 
 env:
@@ -49,25 +49,30 @@ jobs:
     steps:
       # Compute version tags ourselves rather than relying on metadata-action's
       # ref auto-detection: for a workflow_call, github.ref is the *caller's*
-      # ref (e.g. the branch that ran publish_release.yml), not the tag we
-      # were asked to build, so semver-from-ref would silently produce nothing.
+      # ref (e.g. the branch that ran release.yml), not the tag we were asked
+      # to build. github.event_name is also the caller's event, so a call is
+      # detected by the ref input, which only workflow_call provides.
       - name: Resolve ref and push decision
         id: resolve
+        env:
+          CALL_REF: ${{ inputs.ref }}
+          INPUT_PUSH: ${{ inputs.push }}
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF_VALUE: ${{ github.ref }}
         run: |
-          case "${{ github.event_name }}" in
-            workflow_call)
-              REF_NAME="${{ inputs.ref }}"
-              PUSH="${{ inputs.push }}"
-              ;;
-            workflow_dispatch)
-              REF_NAME="${{ github.ref }}"
-              PUSH="${{ inputs.push }}"
-              ;;
-            *)
-              REF_NAME="${{ github.ref }}"
-              PUSH="true"
-              ;;
-          esac
+          if [ -n "$CALL_REF" ]; then
+            MODE=call
+            REF_NAME="$CALL_REF"
+            PUSH="$INPUT_PUSH"
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            MODE=dispatch
+            REF_NAME="$GITHUB_REF_VALUE"
+            PUSH="$INPUT_PUSH"
+          else
+            MODE=event
+            REF_NAME="$GITHUB_REF_VALUE"
+            PUSH="true"
+          fi
           REF_NAME="${REF_NAME#refs/tags/}"
           REF_NAME="${REF_NAME#refs/heads/}"
 
@@ -78,15 +83,19 @@ jobs:
             MAJOR_MINOR=$(echo "$VERSION" | cut -d. -f1,2)
           fi
 
-          echo "ref=$REF_NAME" >> "$GITHUB_OUTPUT"
-          echo "push=$PUSH" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "major_minor=$MAJOR_MINOR" >> "$GITHUB_OUTPUT"
+          {
+            echo "mode=$MODE"
+            echo "ref=$REF_NAME"
+            echo "push=$PUSH"
+            echo "version=$VERSION"
+            echo "major_minor=$MAJOR_MINOR"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
           ref: ${{ steps.resolve.outputs.ref || github.ref }}
+          # Full history and tags: the Docker build runs versioningit offline, so a treeless clone is not enough
           fetch-depth: 0
           fetch-tags: true
 
@@ -109,9 +118,9 @@ jobs:
           tags: |
             type=raw,value=${{ steps.resolve.outputs.version }},enable=${{ steps.resolve.outputs.version != '' }}
             type=raw,value=${{ steps.resolve.outputs.major_minor }},enable=${{ steps.resolve.outputs.major_minor != '' }}
-            type=raw,value=latest,enable=${{ (github.event_name == 'release' && github.event.release.prerelease == false) || (github.event_name == 'workflow_call' && inputs.latest == true) }}
-            type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '' }}
-            type=sha,format=short,prefix=sha-,enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag == '' }}
+            type=raw,value=latest,enable=${{ (github.event_name == 'release' && github.event.release.prerelease == false) || (steps.resolve.outputs.mode == 'call' && inputs.latest) }}
+            type=raw,value=${{ inputs.tag }},enable=${{ steps.resolve.outputs.mode == 'dispatch' && inputs.tag != '' }}
+            type=sha,format=short,prefix=sha-,enable=${{ steps.resolve.outputs.mode == 'dispatch' && inputs.tag == '' }}
 
       # Build once and load it locally so the smoke test runs against the
       # exact image before it is ever pushed to the registry.
