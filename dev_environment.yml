@@ -1,16 +1,21 @@
+# Conda environment for Phyling development (mirrors the pixi "dev" environment).
+#   conda env create -f dev_environment.yml
+#   conda activate phyling
 name: phyling
 channels:
   - conda-forge
   - bioconda
-  - defaults
 dependencies:
+  - python>=3.10,<3.15
+  # External tools used by the pipeline and the test suite
   - aster>=1.19
   - fasttree>=2.1.1
   - iqtree>=3.1.2
   # - muscle>=5.3
-  - python>=3.9,<3.15
   # - raxml-ng>=2.0.2
-  - samtools>=1.21
+  # Developer tools
+  - ruff
+  - graphviz  # Sphinx graphviz diagrams in the docs
   - pip
   - pip:
-    - -e .[dev]
+    - -e .[dev,docs]

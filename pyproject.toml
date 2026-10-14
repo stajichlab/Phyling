@@ -127,8 +127,16 @@ ignore = ["E203", "E701"]
 channels = ["conda-forge", "bioconda"]
 platforms = ["linux-64", "osx-64", "osx-arm64"]
 
+[tool.pixi.activation.env]
+# Keep pixi environments isolated from packages installed with `pip install --user`
+PYTHONNOUSERSITE = "1"
+
 [tool.pixi.dependencies]
 python = ">=3.10,<3.15"
+# External tools used by the default pipeline (kept in sync with the bioconda recipe)
+aster = ">=1.19"
+fasttree = ">=2.1.1"
+iqtree = ">=3.1.2"
 
 [tool.pixi.feature.prod.pypi-dependencies]
 phyling = { path = ".", editable = false }
