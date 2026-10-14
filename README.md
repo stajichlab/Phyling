@@ -5,6 +5,7 @@
 [![License](https://img.shields.io/github/license/stajichlab/Phyling?label=license)](https://github.com/stajichlab/Phyling/blob/main/LICENSE)
 [![Conda](https://anaconda.org/bioconda/phyling/badges/version.svg)](https://anaconda.org/bioconda/phyling)
 [![Container](https://ghcr-badge.egpl.dev/stajichlab/phyling/latest_tag?trim=major&label=Image)](https://github.com/stajichlab/Phyling/pkgs/container/phyling)
+[![Documentation Status](https://app.readthedocs.org/projects/phyling/badge/?version=latest)](https://phyling.readthedocs.io)
 [![DOI](https://img.shields.io/badge/DOI-10.1093/g3journal/jkag062-blue)](https://doi.org/10.1093/g3journal/jkag062)
 
 # Phyling
@@ -38,7 +39,7 @@ conda install bioconda::phyling
 pixi global install -c bioconda phyling
 ```
 
-*For alternative installation options (pip, Git clone, developer setup), see the [Installation Guide](https://github.com/stajichlab/Phyling/wiki/Installation).*
+*For alternative installation options (pip, Git clone, developer setup), see the [Installation Guide](https://phyling.readthedocs.io/page/installation.html).*
 
 ---
 
@@ -62,20 +63,20 @@ phyling tree -I filtered_align -o tree_out -f
 
 ---
 
-## Documentation & Wiki
+## Documentation
 
-Detailed documentation, full CLI argument references, and technical deep-dives are available on the **[Phyling GitHub Wiki](https://github.com/stajichlab/Phyling/wiki)**:
+Detailed documentation, full CLI argument references, and technical deep-dives are available on **[Read the Docs](https://phyling.readthedocs.io)**:
 
-- **[Installation Guide](https://github.com/stajichlab/Phyling/wiki/Installation)** — Conda, Pixi, PyPI, and Developer Setup (`pyproject.toml`).
-- **[Quick Start Guide](https://github.com/stajichlab/Phyling/wiki/Quick-Start)** — Complete tutorial on protein (`pep`) and DNA (`cds`) inputs.
+- **[Installation Guide](https://phyling.readthedocs.io/page/installation.html)** — Conda, Pixi, PyPI, and Developer Setup (`pyproject.toml`).
+- **[Quick Start Guide](https://phyling.readthedocs.io/page/quickstart.html)** — Complete tutorial on protein (`pep`) and DNA (`cds`) inputs.
 - **Command Modules**:
-  - **[Download](https://github.com/stajichlab/Phyling/wiki/Download)** — Download & manage BUSCO HMM sets.
-  - **[Align](https://github.com/stajichlab/Phyling/wiki/Align)** — HMM search, CDS translation/back-translation, PyHMMER multithreading, and checkpoints.
-  - **[Filter](https://github.com/stajichlab/Phyling/wiki/Filter)** — PhyKIT treeness/RCV (`toverr`) ranking and marker selection.
-  - **[Tree](https://github.com/stajichlab/Phyling/wiki/Tree)** — Consensus (ASTER) vs Concatenation, partition analysis, and tree engines (FastTree, IQ-TREE, RAxML-NG).
-- **[Pipeline Architecture & Benchmarks](https://github.com/stajichlab/Phyling/wiki/Pipeline-Architecture)** — Algorithmic design & scaling benchmarks.
-- **[Nextflow Workflow](https://github.com/stajichlab/Phyling/wiki/Nextflow-Workflow)** — Scalable HPC (SLURM) & Cloud pipeline ([nf_phyling](https://github.com/stajichlab/nf_phyling)).
-- **[Citation & References](https://github.com/stajichlab/Phyling/wiki/Citation-and-References)** — Publication metadata & BibTeX.
+  - **[Download](https://phyling.readthedocs.io/page/usage/download.html)** — Download & manage BUSCO HMM sets.
+  - **[Align](https://phyling.readthedocs.io/page/usage/align.html)** — HMM search, CDS translation/back-translation, PyHMMER multithreading, and checkpoints.
+  - **[Filter](https://phyling.readthedocs.io/page/usage/filter.html)** — PhyKIT treeness/RCV (`toverr`) ranking and marker selection.
+  - **[Tree](https://phyling.readthedocs.io/page/usage/tree.html)** — Consensus (ASTER) vs Concatenation, partition analysis, and tree engines (FastTree, IQ-TREE, RAxML-NG).
+- **[Pipeline Architecture & Benchmarks](https://phyling.readthedocs.io/page/architecture.html)** — Algorithmic design & scaling benchmarks.
+- **[Nextflow Workflow](https://phyling.readthedocs.io/page/nextflow.html)** — Scalable HPC (SLURM) & Cloud pipeline ([nf_phyling](https://github.com/stajichlab/nf_phyling)).
+- **[Citation & References](https://phyling.readthedocs.io/page/citation.html)** — Publication metadata & BibTeX.
 
 ---
 

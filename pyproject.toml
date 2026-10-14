@@ -61,6 +61,7 @@ phyling = "phyling.main:run_cli"
 
 [project.urls]
 "Homepage" = "https://github.com/stajichlab/Phyling"
+"Documentation" = "https://phyling.readthedocs.io"
 "Bug Tracker" = "https://github.com/stajichlab/Phyling/issues"
 
 [tool.hatch.build.targets.sdist]
