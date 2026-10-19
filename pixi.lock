@@ -4159,7 +4159,7 @@ packages:
   - pre-commit>=4.6.2 ; extra == 'dev'
   - pytest-cov>=5.0.0 ; extra == 'dev'
   - pytest>=9.1.1 ; extra == 'dev'
-  - furo>=2024.1.29 ; extra == 'docs'
+  - furo>=2025.12.19 ; extra == 'docs'
   - myst-parser>=3.0 ; extra == 'docs'
   - sphinx-autobuild>=2024.10.3 ; extra == 'docs'
   - sphinx-copybutton>=0.5.2 ; extra == 'docs'
