@@ -1,0 +1,13 @@
+name: CI/Refresh pixi.lock
+
+# Dependabot bumps the dependencies in pyproject.toml but does not know about pixi.lock. Regenerate the lock file and
+# push it to the Dependabot branch so the PR stays installable with `pixi install --locked`.
+on:
+  pull_request:
+    paths: ["pyproject.toml"]
+
+jobs:
+  refresh:
+    uses: stajichlab/gh_workflows/.github/workflows/pixi_lock_refresh.yml@v1
+    permissions:
+      contents: write   # Dependabot runs get a read-only token unless the caller grants write

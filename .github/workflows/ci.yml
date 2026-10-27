@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "dev"]
+    paths: ["**.py", "pyproject.toml", "pixi.lock", "dev_environment.yml", ".github/workflows/ci.yml", ".github/workflows/build-tools.yml"]
+  pull_request:
+    branches: ["main", "dev"]
+    paths: ["**.py", "pyproject.toml", "pixi.lock", "dev_environment.yml", ".github/workflows/ci.yml", ".github/workflows/build-tools.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-tools:
+    uses: ./.github/workflows/build-tools.yml
+
+  pip:
+    needs: build-tools
+    uses: stajichlab/gh_workflows/.github/workflows/python_test.yml@v1
+    with:
+      ruff: true
+      tools_artifact_pattern: tool-*
+      test_command: pytest --cov --cov-report=xml
+      codecov: true
+    secrets:
+      codecov_token: ${{ secrets.CODECOV_TOKEN }}
+
+  # dev_environment.yml provides the external tools from bioconda and installs Phyling in editable mode
+  conda:
+    uses: stajichlab/gh_workflows/.github/workflows/python_test.yml@v1
+    with:
+      installer: conda
+      conda_environment_file: dev_environment.yml
+      python_versions: '[""]'
+
+  # The dev environment provides ASTER, FastTree and IQ-TREE from bioconda; pixi.lock must match pyproject.toml
+  pixi:
+    uses: stajichlab/gh_workflows/.github/workflows/python_test.yml@v1
+    with:
+      installer: pixi
+      pixi_environments: '["dev"]'
+      setup_command: command -v astral && command -v fasttree && command -v iqtree
