@@ -1,151 +1,150 @@
-name: CD/Container
+# Builds and publishes the Phyling container image. The Docker build itself uses the org's shared container_build
+# workflow; signing, provenance and the Apptainer smoke test stay here.
+#
+# - Release (called by publish.yml with the new tag): publishes ghcr.io/stajichlab/phyling:<version>, :<major.minor>
+#                             and :latest (the last two not for prereleases). The build fails if the installed
+#                             package does not report the release version. No .sif is published: users convert the
+#                             image with `apptainer pull docker://...`, which the apptainer-test job checks.
+#
+# - Manual run (workflow_dispatch): builds the current branch as ghcr.io/stajichlab/phyling:main, to test an image
+#                             before releasing; with the `tag` input, rebuilds that release exactly as above (e.g.
+#                             after a failed release build). Rebuilding an older release also moves :latest to it.
+#
+# All images are signed with Cosign (Sigstore) and include SLSA provenance attestations for supply-chain security.
+
+name: Build container image
 
 on:
-  push:
-    tags: ["v*.*.*"]
-  release:
-    types: [published]
   workflow_call:
     inputs:
-      ref:
-        description: "Tag to build the image from (e.g. v1.2.3)"
-        type: string
+      tag:
+        description: "Release tag to build (e.g. v2.6.0)"
         required: true
-      push:
-        description: "Push the built image to GHCR"
-        type: boolean
-        default: true
-      latest:
-        description: "Also tag this image as latest"
-        type: boolean
-        default: true
+        type: string
   workflow_dispatch:
     inputs:
       tag:
-        description: "Extra image tag to publish (e.g. testing). Leave blank to just build."
-        type: string
+        description: "Release tag to rebuild (e.g. v2.6.0-beta.0); empty builds the current branch as :main"
+        required: false
         default: ""
-      push:
-        description: "Push the built image to GHCR"
-        type: boolean
-        default: false
+        type: string
 
-concurrency:
-  group: container-${{ inputs.ref || github.ref }}
-  cancel-in-progress: false
+permissions:
+  contents: read
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: stajichlab/phyling
 
 jobs:
-  build-and-push:
-    name: Build and push container image
-    runs-on: ubuntu-latest
+  docker:
+    uses: stajichlab/gh_workflows/.github/workflows/container_build.yml@v2
     permissions:
       contents: read
       packages: write
+    with:
+      ref: ${{ inputs.tag }}
+      latest: ${{ inputs.tag != '' }}  # ignored for prereleases
+      extra_tags: ${{ inputs.tag == '' && 'main' || '' }}
+      # versioningit reads the version from .git in the build context; for a release, also check it matches the tag
+      build_args: |
+        PHYLING_VERSION=${{ inputs.tag }}
+      smoke_test_args: --version
 
+  docker-sign:
+    needs: docker
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      packages: write
     steps:
-      # Compute version tags ourselves rather than relying on metadata-action's
-      # ref auto-detection: for a workflow_call, github.ref is the *caller's*
-      # ref (e.g. the branch that ran release.yml), not the tag we were asked
-      # to build. github.event_name is also the caller's event, so a call is
-      # detected by the ref input, which only workflow_call provides.
-      - name: Resolve ref and push decision
-        id: resolve
-        env:
-          CALL_REF: ${{ inputs.ref }}
-          INPUT_PUSH: ${{ inputs.push }}
-          EVENT_NAME: ${{ github.event_name }}
-          GITHUB_REF_VALUE: ${{ github.ref }}
-        run: |
-          if [ -n "$CALL_REF" ]; then
-            MODE=call
-            REF_NAME="$CALL_REF"
-            PUSH="$INPUT_PUSH"
-          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            MODE=dispatch
-            REF_NAME="$GITHUB_REF_VALUE"
-            PUSH="$INPUT_PUSH"
-          else
-            MODE=event
-            REF_NAME="$GITHUB_REF_VALUE"
-            PUSH="true"
-          fi
-          REF_NAME="${REF_NAME#refs/tags/}"
-          REF_NAME="${REF_NAME#refs/heads/}"
+      - uses: sigstore/cosign-installer@v4.1.2
 
-          VERSION=""
-          MAJOR_MINOR=""
-          if [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-            VERSION="${REF_NAME#v}"
-            MAJOR_MINOR=$(echo "$VERSION" | cut -d. -f1,2)
-          fi
-
-          {
-            echo "mode=$MODE"
-            echo "ref=$REF_NAME"
-            echo "push=$PUSH"
-            echo "version=$VERSION"
-            echo "major_minor=$MAJOR_MINOR"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Checkout repository
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ steps.resolve.outputs.ref || github.ref }}
-          # Full history and tags: the Docker build runs versioningit offline, so a treeless clone is not enough
-          fetch-depth: 0
-          fetch-tags: true
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GHCR
-        if: steps.resolve.outputs.push == 'true'
-        uses: docker/login-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=${{ steps.resolve.outputs.version }},enable=${{ steps.resolve.outputs.version != '' }}
-            type=raw,value=${{ steps.resolve.outputs.major_minor }},enable=${{ steps.resolve.outputs.major_minor != '' }}
-            type=raw,value=latest,enable=${{ (github.event_name == 'release' && github.event.release.prerelease == false) || (steps.resolve.outputs.mode == 'call' && inputs.latest) }}
-            type=raw,value=${{ inputs.tag }},enable=${{ steps.resolve.outputs.mode == 'dispatch' && inputs.tag != '' }}
-            type=sha,format=short,prefix=sha-,enable=${{ steps.resolve.outputs.mode == 'dispatch' && inputs.tag == '' }}
-
-      # Build once and load it locally so the smoke test runs against the
-      # exact image before it is ever pushed to the registry.
-      - name: Build image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./Dockerfile
-          load: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Smoke test image
+      - name: Sign the image
         run: |
-          docker run --rm ${{ fromJson(steps.meta.outputs.json).tags[0] }} --help
+          cosign sign --yes \
+            --recursive \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.docker.outputs.digest }}"
 
-      - name: Push image
-        if: steps.resolve.outputs.push == 'true'
-        uses: docker/build-push-action@v7
+  apptainer-test:
+    # Users run the published Docker image on HPC via `apptainer pull docker://...`; check that the converted
+    # image works, including in login shells (SLURM/Nextflow run task scripts with `bash -l`).
+    needs: docker
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Install Apptainer
+        # Not in Ubuntu's default archive: install from the Apptainer project's PPA
+        run: |
+          sudo add-apt-repository -y ppa:apptainer/ppa
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends apptainer
+
+      - name: Pull and smoke-test the image
+        env:
+          APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
+          APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          apptainer pull phyling.sif "docker://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.docker.outputs.digest }}"
+          apptainer run phyling.sif --version
+          apptainer exec phyling.sif phyling --version
+          apptainer exec phyling.sif bash -lc 'phyling --version && command -v astral FastTree'
+
+  provenance:
+    needs: [docker, docker-sign]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      packages: write
+    steps:
+      - uses: sigstore/cosign-installer@v4.1.2
+
+      - uses: docker/login-action@v4
         with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate SLSA provenance predicate
+        id: slsa-predicate
+        run: |
+          started_on="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          predicate_file="${RUNNER_TEMP}/slsa-provenance.json"
+          cat > "${predicate_file}" <<JSON
+          {
+            "buildDefinition": {
+              "buildType": "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/container.yml",
+              "externalParameters": {},
+              "internalParameters": {},
+              "resolvedDependencies": []
+            },
+            "runDetails": {
+              "builder": {
+                "id": "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+              },
+              "metadata": {
+                "invocationId": "${GITHUB_RUN_ID}",
+                "startedOn": "${started_on}"
+              },
+              "byproducts": []
+            }
+          }
+          JSON
+          echo "path=${predicate_file}" >> "${GITHUB_OUTPUT}"
+
+      - name: Generate SLSA provenance
+        run: |
+          cosign attest --yes \
+            --predicate "${{ steps.slsa-predicate.outputs.path }}" \
+            --type=slsaprovenance1 \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.docker.outputs.digest }}"
