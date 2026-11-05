@@ -7,7 +7,7 @@ repos:
       - id: check-symlinks
       - id: destroyed-symlinks
       - id: trailing-whitespace
-        exclude: \.tsv$
+        exclude: (\.tsv$|^tests/database/)
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-toml

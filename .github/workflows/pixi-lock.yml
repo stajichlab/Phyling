@@ -8,6 +8,6 @@ on:
 
 jobs:
   refresh:
-    uses: stajichlab/gh_workflows/.github/workflows/pixi_lock_refresh.yml@v1
+    uses: stajichlab/gh_workflows/.github/workflows/pixi_lock_refresh.yml@v2
     permissions:
       contents: write   # Dependabot runs get a read-only token unless the caller grants write

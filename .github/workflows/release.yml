@@ -27,7 +27,7 @@ on:
 
 jobs:
   prepare:
-    uses: stajichlab/gh_workflows/.github/workflows/release_prepare.yml@v1
+    uses: stajichlab/gh_workflows/.github/workflows/release_prepare.yml@v2
     permissions:
       contents: write
       pull-requests: write
