@@ -1,27 +1,150 @@
-name: CD/Container
+# Builds and publishes the Phyling container image. The Docker build itself uses the org's shared container_build
+# workflow; signing, provenance and the Apptainer smoke test stay here.
+#
+# - Release (called by publish.yml with the new tag): publishes ghcr.io/stajichlab/phyling:<version>, :<major.minor>
+#                             and :latest (the last two not for prereleases). The build fails if the installed
+#                             package does not report the release version. No .sif is published: users convert the
+#                             image with `apptainer pull docker://...`, which the apptainer-test job checks.
+#
+# - Manual run (workflow_dispatch): builds the current branch as ghcr.io/stajichlab/phyling:main, to test an image
+#                             before releasing; with the `tag` input, rebuilds that release exactly as above (e.g.
+#                             after a failed release build). Rebuilding an older release also moves :latest to it.
+#
+# All images are signed with Cosign (Sigstore) and include SLSA provenance attestations for supply-chain security.
 
-# Manually build a container image from the selected branch or tag. Release images are built by publish.yml.
+name: Build container image
 
 on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag to build (e.g. v2.6.0)"
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       tag:
-        description: "Extra image tag to publish (e.g. testing). Leave blank for just sha-<commit>."
-        type: string
+        description: "Release tag to rebuild (e.g. v2.6.0-beta.0); empty builds the current branch as :main"
+        required: false
         default: ""
-      push:
-        description: "Push the built image to GHCR"
-        type: boolean
-        default: false
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: stajichlab/phyling
 
 jobs:
-  container:
-    uses: stajichlab/gh_workflows/.github/workflows/container_build.yml@v1
+  docker:
+    uses: stajichlab/gh_workflows/.github/workflows/container_build.yml@v2
     permissions:
       contents: read
       packages: write
     with:
-      ref: ${{ github.ref_name }}
-      extra_tags: ${{ inputs.tag }}
-      push: ${{ inputs.push }}
-      smoke_test_args: --help
+      ref: ${{ inputs.tag }}
+      latest: ${{ inputs.tag != '' }}  # ignored for prereleases
+      extra_tags: ${{ inputs.tag == '' && 'main' || '' }}
+      # versioningit reads the version from .git in the build context; for a release, also check it matches the tag
+      build_args: |
+        PHYLING_VERSION=${{ inputs.tag }}
+      smoke_test_args: --version
+
+  docker-sign:
+    needs: docker
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      packages: write
+    steps:
+      - uses: sigstore/cosign-installer@v4.1.2
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sign the image
+        run: |
+          cosign sign --yes \
+            --recursive \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.docker.outputs.digest }}"
+
+  apptainer-test:
+    # Users run the published Docker image on HPC via `apptainer pull docker://...`; check that the converted
+    # image works, including in login shells (SLURM/Nextflow run task scripts with `bash -l`).
+    needs: docker
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Install Apptainer
+        # Not in Ubuntu's default archive: install from the Apptainer project's PPA
+        run: |
+          sudo add-apt-repository -y ppa:apptainer/ppa
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends apptainer
+
+      - name: Pull and smoke-test the image
+        env:
+          APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
+          APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          apptainer pull phyling.sif "docker://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.docker.outputs.digest }}"
+          apptainer run phyling.sif --version
+          apptainer exec phyling.sif phyling --version
+          apptainer exec phyling.sif bash -lc 'phyling --version && command -v astral FastTree'
+
+  provenance:
+    needs: [docker, docker-sign]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      packages: write
+    steps:
+      - uses: sigstore/cosign-installer@v4.1.2
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate SLSA provenance predicate
+        id: slsa-predicate
+        run: |
+          started_on="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          predicate_file="${RUNNER_TEMP}/slsa-provenance.json"
+          cat > "${predicate_file}" <<JSON
+          {
+            "buildDefinition": {
+              "buildType": "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/container.yml",
+              "externalParameters": {},
+              "internalParameters": {},
+              "resolvedDependencies": []
+            },
+            "runDetails": {
+              "builder": {
+                "id": "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+              },
+              "metadata": {
+                "invocationId": "${GITHUB_RUN_ID}",
+                "startedOn": "${started_on}"
+              },
+              "byproducts": []
+            }
+          }
+          JSON
+          echo "path=${predicate_file}" >> "${GITHUB_OUTPUT}"
+
+      - name: Generate SLSA provenance
+        run: |
+          cosign attest --yes \
+            --predicate "${{ steps.slsa-predicate.outputs.path }}" \
+            --type=slsaprovenance1 \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.docker.outputs.digest }}"

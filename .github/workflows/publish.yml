@@ -95,7 +95,7 @@ jobs:
 
   publish:
     needs: test-sdist
-    uses: stajichlab/gh_workflows/.github/workflows/release_publish.yml@v1
+    uses: stajichlab/gh_workflows/.github/workflows/release_publish.yml@v2
     permissions:
       contents: write
     with:
@@ -105,19 +105,18 @@ jobs:
   container:
     needs: publish
     if: needs.publish.outputs.published == 'true'
-    uses: stajichlab/gh_workflows/.github/workflows/container_build.yml@v1
+    uses: ./.github/workflows/container.yml
     permissions:
       contents: read
       packages: write
+      id-token: write  # Cosign keyless signing and provenance
     with:
-      ref: ${{ needs.publish.outputs.tag }}
-      latest: true   # ignored for prereleases
-      smoke_test_args: --help
+      tag: ${{ needs.publish.outputs.tag }}
 
   sync-dev:
     needs: publish
     if: needs.publish.outputs.published == 'true'
-    uses: stajichlab/gh_workflows/.github/workflows/sync_dev.yml@v1
+    uses: stajichlab/gh_workflows/.github/workflows/sync_dev.yml@v2
     permissions:
       contents: write
       pull-requests: write
