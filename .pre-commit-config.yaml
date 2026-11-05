@@ -10,6 +10,7 @@ repos:
         exclude: (\.tsv$|^tests/database/)
       - id: end-of-file-fixer
       - id: check-yaml
+        exclude: ^bioconda/meta\.yaml$  # conda-build recipe with Jinja templating
       - id: check-toml
       - id: check-ast
       - id: check-added-large-files
