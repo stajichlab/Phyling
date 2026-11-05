@@ -1,0 +1,127 @@
+# Continuous integration for every push to main/dev and every pull request:
+# lint (pre-commit), tests on every supported Python with pip (external tools built by build-tools.yml), tests in the
+# conda dev environment and the locked pixi dev environment, and a warnings-as-errors Sphinx build of docs/.
+# The test jobs use the org's shared python_test_* workflows (stajichlab/gh_workflows); the pip job uploads coverage
+# to Codecov (needs the CODECOV_TOKEN secret).
+#
+# The triggers have no path filters, so every check always reports and can be required by branch protection. The
+# `changes` job skips the test jobs (reported as passing) when only docs/README/other non-code files changed.
+
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Decides whether the test jobs run. Manual runs (workflow_dispatch) always test.
+  changes:
+    name: Detect code changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read  # paths-filter lists PR files through the API
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - "src/**"
+              - "tests/**"
+              - "example/**"
+              - "pyproject.toml"
+              - "pixi.lock"
+              - "dev_environment.yml"
+              - "codecov.yml"
+              - ".github/workflows/ci.yml"
+              - ".github/workflows/build-tools.yml"
+
+  lint:
+    name: Lint (pre-commit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - uses: pre-commit/action@v3.0.1
+
+  build-tools:
+    name: Build external tools
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.code == 'true'
+    uses: ./.github/workflows/build-tools.yml
+
+  # One job per Python version in the shared workflow's default 3.10-3.14 matrix
+  test-pip:
+    name: Tests (pip)
+    needs: build-tools
+    uses: stajichlab/gh_workflows/.github/workflows/python_test_pip.yml@v2
+    with:
+      tools_artifact_pattern: tool-*
+      test_command: pytest --cov --cov-report=xml
+    secrets:
+      codecov_token: ${{ secrets.CODECOV_TOKEN }}
+
+  # dev_environment.yml provides the external tools from bioconda and installs Phyling in editable mode
+  test-conda:
+    name: Tests (conda dev environment)
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.code == 'true'
+    uses: stajichlab/gh_workflows/.github/workflows/python_test_conda.yml@v2
+    with:
+      environment_file: dev_environment.yml
+      python_versions: '[""]'
+
+  # The dev environment provides ASTER, FastTree and IQ-TREE from bioconda; pixi.lock must match pyproject.toml
+  test-pixi:
+    name: Tests (locked pixi dev environment)
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.code == 'true'
+    uses: stajichlab/gh_workflows/.github/workflows/python_test_pixi.yml@v2
+    with:
+      environments: '["dev"]'
+      # first check the environment has the external tools the default pipeline needs
+      test_command: |
+        command -v astral && command -v fasttree && command -v iqtree
+        pytest
+
+  docs:
+    name: Docs build (Sphinx, warnings are errors)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          filter: tree:0  # full history for the version, without old file contents
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install Graphviz (`dot` draws the diagrams)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends graphviz
+
+      - name: Install Sphinx and Phyling
+        run: python -m pip install ".[docs]"
+
+      - name: Build the docs
+        run: python -m sphinx -b html -W --keep-going -n docs docs/_build/html

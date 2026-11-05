@@ -12,6 +12,10 @@ WORKDIR /src
 COPY --chown=$MAMBA_USER:$MAMBA_USER . .
 USER $MAMBA_USER
 
+# Release tag expected from the build (e.g. v2.6.0), checked against `phyling --version` below; empty skips the
+# check (manual builds of a branch). versioningit itself derives the version from the .git directory in the context.
+ARG PHYLING_VERSION=""
+
 # Runtime environment: python, pip/git (needed to install and version phyling
 # from this checkout), the external phylogenetics binaries phyling shells
 # out to for alignment and tree inference, and procps-ng (provides `ps`, which
@@ -45,12 +49,21 @@ RUN set -eux; \
     command -v ps; \
     command -v raxml-ng; \
     command -v iqtree || command -v iqtree2; \
-    phyling --help
+    phyling --help; \
+    if [ -n "${PHYLING_VERSION}" ]; then \
+        python -c 'import sys; from importlib.metadata import version; from pip._vendor.packaging.version import Version; v = version("phyling"); sys.exit(0 if Version(v) == Version(sys.argv[1]) else f"phyling reports {v}, expected {sys.argv[1]}")' "${PHYLING_VERSION}"; \
+    fi
 
 USER root
-RUN rm -rf /src && mkdir -p /data && chown $MAMBA_USER:$MAMBA_USER /data
+# /etc/profile resets PATH in login shells, so re-add the environment there too
+RUN rm -rf /src && mkdir -p /data && chown $MAMBA_USER:$MAMBA_USER /data \
+    && echo 'export PATH=/opt/conda/bin:$PATH' > /etc/profile.d/phyling.sh
 USER $MAMBA_USER
 WORKDIR /data
+
+# Put the environment on PATH without the entrypoint, for runtimes that bypass it: `apptainer exec`, `docker run
+# --entrypoint` and Nextflow/SLURM task scripts (`bash -l`).
+ENV PATH=/opt/conda/bin:$PATH
 
 # _entrypoint.sh (from the base image) activates the micromamba env before
 # exec'ing the given command, so `phyling` resolves from PATH at run time.
