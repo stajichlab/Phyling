@@ -1,6 +1,6 @@
 # Weekly check that bioconda/meta.yaml is identical to the live recipe in bioconda/bioconda-recipes
-# (recipes/phyling/meta.yaml). If they differ, opens an issue with the diff (or updates the open one) and closes it
-# once they match again. It only reports: update the bioconda-recipes PR or bioconda/meta.yaml by hand.
+# (recipes/phyling/meta.yaml). If they differ, the job fails with the diff in the job summary, so the workflow badge
+# stays red until they match again. It only reports: update the bioconda-recipes PR or bioconda/meta.yaml by hand.
 
 name: Bioconda recipe check
 
@@ -17,6 +17,5 @@ jobs:
     uses: stajichlab/gh_workflows/.github/workflows/bioconda_recipe_check.yml@v2
     permissions:
       contents: read
-      issues: write
     with:
       recipe_path: bioconda/meta.yaml

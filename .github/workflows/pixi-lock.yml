@@ -6,6 +6,10 @@ on:
   pull_request:
     paths: ["pyproject.toml"]
 
+concurrency:
+  group: refresh-pixi-lock-${{ github.head_ref }}
+  cancel-in-progress: true
+
 jobs:
   refresh:
     uses: stajichlab/gh_workflows/.github/workflows/pixi_lock_refresh.yml@v2

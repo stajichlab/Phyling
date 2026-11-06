@@ -37,3 +37,12 @@ jobs:
       additional_bump_command: |
         sed -i "s/^default-version = .*/default-version = \"$VERSION\"/" pyproject.toml
         grep -q "^default-version = \"$VERSION\"" pyproject.toml
+        # Stable releases only (a prerelease $VERSION contains "-"): set the bioconda recipe's version and reset its
+        # build number. Its sha256 is set by publish.yml once the release sdist exists.
+        case "$VERSION" in
+          *-*) echo "Prerelease $VERSION: bioconda/meta.yaml left unchanged" ;;
+          *)
+            sed -i -E -e "s/^(\{% set version = \")[^\"]*(\" %\})/\1${VERSION}\2/" -e "s/^(  number: )[0-9]+/\10/" bioconda/meta.yaml
+            grep -q "set version = \"${VERSION}\"" bioconda/meta.yaml
+            ;;
+        esac

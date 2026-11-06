@@ -1,0 +1,24 @@
+# Keeps dev up to date with main: after every push to main (merged pull requests, Dependabot updates, ...), the org's
+# shared sync_dev workflow merges main into dev and pushes. If the merge conflicts or the push is rejected, it opens a
+# `Sync dev with main` pull request into dev instead.
+#
+# Release merges (release/v* pull requests) are left to publish.yml, which syncs after tagging so the merge is named
+# after the release. Both share sync_dev's concurrency group, so they never run at once.
+
+name: Sync dev
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  sync-dev:
+    # a release lands as `Release v<version>` (squash/rebase merge) or `Merge pull request #N from .../release/v<version>`
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      !(startsWith(github.event.head_commit.message, 'Release v') || contains(github.event.head_commit.message, '/release/v'))
+    uses: stajichlab/gh_workflows/.github/workflows/sync_dev.yml@v2
+    permissions:
+      contents: write
+      pull-requests: write

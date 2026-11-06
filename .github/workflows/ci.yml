@@ -1,17 +1,16 @@
 # Continuous integration for every push to main/dev and every pull request:
 # lint (pre-commit), tests on every supported Python with pip (external tools built by build-tools.yml), tests in the
 # conda dev environment and the locked pixi dev environment, and a warnings-as-errors Sphinx build of docs/.
-# The test jobs use the org's shared python_test_* workflows (stajichlab/gh_workflows); the pip job uploads coverage
-# to Codecov (needs the CODECOV_TOKEN secret).
+# The test jobs use the org's shared python_test_* workflows (stajichlab/gh_workflows); the pip job uploads
+# coverage to Codecov (flags pip-<version>; needs the CODECOV_TOKEN secret).
 #
-# The triggers have no path filters, so every check always reports and can be required by branch protection. The
-# `changes` job skips the test jobs (reported as passing) when only docs/README/other non-code files changed.
+# The triggers have no path filters, so every check always reports and can be required by branch protection.
 
 name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -23,7 +22,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Decides whether the test jobs run. Manual runs (workflow_dispatch) always test.
+  # Decides whether the test and docs jobs run. Skipped jobs are reported as passing, so required checks are satisfied:
+  # tests are skipped when only docs/README/other non-code files changed, the docs build when nothing under docs/,
+  # src/ or pyproject.toml changed. Manual runs (workflow_dispatch) always run both.
   changes:
     name: Detect code changes
     runs-on: ubuntu-latest
@@ -32,6 +33,7 @@ jobs:
       pull-requests: read  # paths-filter lists PR files through the API
     outputs:
       code: ${{ steps.filter.outputs.code }}
+      docs: ${{ steps.filter.outputs.docs }}
     steps:
       - uses: actions/checkout@v7
 
@@ -49,6 +51,11 @@ jobs:
               - "codecov.yml"
               - ".github/workflows/ci.yml"
               - ".github/workflows/build-tools.yml"
+            docs:  # autodoc/viewcode read src/, and the docs extra is in pyproject.toml
+              - "docs/**"
+              - "src/**"
+              - "pyproject.toml"
+              - ".github/workflows/ci.yml"
 
   lint:
     name: Lint (pre-commit)
@@ -104,6 +111,8 @@ jobs:
 
   docs:
     name: Docs build (Sphinx, warnings are errors)
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

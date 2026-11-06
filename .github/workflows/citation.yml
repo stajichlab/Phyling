@@ -1,0 +1,17 @@
+# Validates CITATION.cff and warns if its version differs from the latest release (the org's shared citation_check).
+
+name: Citation
+
+on:
+  pull_request:
+    paths: [CITATION.cff]
+  push:
+    branches: [main]
+    paths: [CITATION.cff]
+
+permissions:
+  contents: read
+
+jobs:
+  citation:
+    uses: stajichlab/gh_workflows/.github/workflows/citation_check.yml@v2
