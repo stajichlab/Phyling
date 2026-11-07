@@ -1,0 +1,28 @@
+# Checks the bioconda recipe can be installed, with the shared bioconda_recipe_solve workflow: solves
+# bioconda/meta.yaml's run requirements (dry run, nothing is downloaded) for every Python allowed by its
+# `python >=3.X,<3.Y` run line, with glibc 2.17 like bioconda's build image. Catches a dependency with no build for a
+# supported Python, or one needing a newer glibc. Runs on changes to the recipe or the Python range, and is called by
+# publish.yml before a release is tagged.
+
+name: Recipe
+
+on:
+  push:
+    branches: [main]
+    paths: ["bioconda/meta.yaml", "pyproject.toml", ".github/workflows/recipe-solve.yml"]
+  pull_request:
+    paths: ["bioconda/meta.yaml", "pyproject.toml", ".github/workflows/recipe-solve.yml"]
+  workflow_dispatch:
+  workflow_call:
+
+concurrency:
+  group: recipe-solve-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  solve:
+    uses: stajichlab/gh_workflows/.github/workflows/bioconda_recipe_solve.yml@v2
+    # defaults: recipe_path bioconda/meta.yaml, glibc 2.17, Pythons from the recipe's `python >=3.X,<3.Y` run line

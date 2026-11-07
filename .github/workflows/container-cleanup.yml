@@ -1,0 +1,49 @@
+# Weekly cleanup of ghcr.io/stajichlab/phyling:
+# 1. keep only the most recent alpha/beta release tag;
+# 2. delete untagged versions not updated for 14 days with the org's shared container_cleanup, which keeps every
+#    platform manifest and attestation a kept image references (they are untagged versions too) and deletes the
+#    Cosign signature tags (sha256-<digest>) of images that are gone, such as the betas removed in step 1.
+# Run it by hand with dry_run first to see what would be deleted.
+
+name: Container cleanup
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"  # Mondays 03:00 UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only list what would be deleted"
+        type: boolean
+        default: false
+
+permissions:
+  packages: write
+
+jobs:
+  prune-prereleases:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Keep only latest beta/alpha release tag
+        uses: snok/container-retention-policy@v3.1.0
+        with:
+          account: stajichlab
+          image-names: phyling
+          image-tags: "*alpha* *beta*"
+          tag-selection: tagged
+          keep-n-most-recent: 1
+          cut-off: 0s
+          dry-run: ${{ inputs.dry_run || false }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  cleanup:
+    needs: prune-prereleases
+    if: ${{ !cancelled() }}
+    uses: stajichlab/gh_workflows/.github/workflows/container_cleanup.yml@v2
+    permissions:
+      contents: read  # the shared workflow's job requests it
+      packages: write
+    with:
+      packages: phyling
+      min_age_days: 14
+      dry_run: ${{ inputs.dry_run || false }}  # inputs is empty on the schedule

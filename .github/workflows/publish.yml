@@ -2,6 +2,7 @@ name: Publish
 
 # Runs when a release/v<version> pull request is merged into main: build the sdist and test it with pip, tag and
 # publish the GitHub release with the sdist attached, then build and push the container image and merge main into dev.
+# The bioconda recipe must solve on every supported Python (recipe-solve.yml) before the release is tagged.
 
 on:
   pull_request:
@@ -15,7 +16,8 @@ concurrency:
 jobs:
   build-sdist:
     name: Build sdist
-    if: github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')
+    # only merged release PRs opened from this repo by release.yml; skipping here skips every job below
+    if: github.event.pull_request.merged && startsWith(github.head_ref, 'release/v') && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
 
     steps:
@@ -40,13 +42,29 @@ jobs:
       - name: Build sdist
         run: pipx run build --sdist
 
+      - name: Check the built version matches the release tag
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          python -m pip install packaging
+          python - "${HEAD_REF#release/v}" dist/*.tar.gz <<'PY'
+          import sys
+          from pathlib import Path
+          from packaging.version import Version
+          expected = Version(sys.argv[1])
+          built = Version(Path(sys.argv[2]).name.removesuffix(".tar.gz").rsplit("-", 1)[1])
+          if built != expected:
+              sys.exit(f"built version {built} does not match release tag {expected}")
+          print(f"built version {built} matches the release tag")
+          PY
+
       - uses: actions/upload-artifact@v7
         with:
           name: sdist
           path: dist/*.tar.gz
 
   build-tools:
-    if: github.event.pull_request.merged && startsWith(github.head_ref, 'release/v')
+    needs: build-sdist  # skipped with it for pull requests that are not releases
     uses: ./.github/workflows/build-tools.yml
 
   test-sdist:
@@ -93,8 +111,13 @@ jobs:
       - name: Test with pytest
         run: pytest tests
 
+  # the bioconda recipe's run requirements must install on every supported Python (as bioconda's build image)
+  recipe-solve:
+    needs: build-sdist  # skipped with it for pull requests that are not releases
+    uses: ./.github/workflows/recipe-solve.yml
+
   publish:
-    needs: test-sdist
+    needs: [test-sdist, recipe-solve]
     uses: stajichlab/gh_workflows/.github/workflows/release_publish.yml@v2
     permissions:
       contents: write
@@ -112,6 +135,56 @@ jobs:
       id-token: write  # Cosign keyless signing and provenance
     with:
       tag: ${{ needs.publish.outputs.tag }}
+
+  # release.yml sets the bioconda recipe's version for stable releases; its sha256 is that of the sdist attached to
+  # the GitHub release (the recipe's source url), which is the tested sdist artifact of this run. Open a pull request
+  # into dev updating bioconda/meta.yaml, to copy into recipes/phyling/meta.yaml in bioconda-recipes.
+  bioconda-sha256:
+    needs: publish
+    if: needs.publish.outputs.published == 'true' && needs.publish.outputs.prerelease != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@v7
+        with:
+          ref: dev
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: sdist
+          path: ${{ runner.temp }}/dist
+
+      - name: Update bioconda/meta.yaml and open a pull request into dev
+        env:
+          TAG: ${{ needs.publish.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${TAG#v}"
+          sdist="$RUNNER_TEMP/dist/phyling-${VERSION}.tar.gz"
+          [ -f "$sdist" ] || { echo "::error::No $(basename "$sdist") in the sdist artifact"; ls "$RUNNER_TEMP/dist"; exit 1; }
+          SHA256=$(sha256sum "$sdist" | cut -d' ' -f1)
+          recipe=bioconda/meta.yaml
+          # The release PR already set this version (and build number 0); dev gets it through sync-dev, which may
+          # not have finished yet, so set it here too
+          sed -i -E -e "s/^(\{% set version = \")[^\"]*(\" %\})/\1${VERSION}\2/" \
+            -e "s/^(  number: )[0-9]+/\10/" -e "s/^(  sha256: )[0-9a-f]+/\1${SHA256}/" "$recipe"
+          grep -q "set version = \"${VERSION}\"" "$recipe" && grep -q "sha256: ${SHA256}" "$recipe"
+          if git diff --quiet -- "$recipe"; then
+            echo "bioconda/meta.yaml on dev already has ${VERSION} and its sha256"
+            exit 0
+          fi
+          branch="bioconda/v${VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git commit -m "Update bioconda recipe to ${VERSION}" -- "$recipe"
+          git push --force origin "$branch"
+          gh pr create --base dev --head "$branch" \
+            --title "Update bioconda recipe to ${VERSION}" \
+            --body "Sets \`bioconda/meta.yaml\` to the released ${VERSION} with the sha256 of its release sdist (\`${SHA256}\`). Copy the same change into \`recipes/phyling/meta.yaml\` in bioconda-recipes if the autobump PR has not already done it."
 
   sync-dev:
     needs: publish

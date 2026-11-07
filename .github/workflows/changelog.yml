@@ -1,0 +1,23 @@
+# Requires every pull request that changes the package (source code, project metadata or dependencies) to add an
+# entry under [Unreleased] in CHANGELOG.md (the org's shared changelog_check), so release.yml never finds it empty.
+# Pull requests touching only docs, CI, tests or containers are not checked. Label a PR `skip-changelog` if it needs
+# none; Dependabot and release PRs are skipped.
+#
+# Do not make this a required status check: a pull request outside these paths never reports it and would wait forever.
+
+name: Changelog
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    paths:
+      - "src/**"              # source code
+      - "pyproject.toml"      # project metadata and dependencies
+      - "dev_environment.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  changelog:
+    uses: stajichlab/gh_workflows/.github/workflows/changelog_check.yml@v2
